@@ -44,4 +44,4 @@ This packages a standalone `Time Tracker.app` (and a `.dmg` installer) into the 
 
 ## Author
 
-Jason Green — jgreen44@asu.edu
+Jason Green — jason@clearedfinal.com
