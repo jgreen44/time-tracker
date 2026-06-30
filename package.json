@@ -1,0 +1,46 @@
+{
+  "name": "time-tracker",
+  "version": "1.0.0",
+  "description": "Simple Mac menu bar app for tracking software development time",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc && npm run copy-assets",
+    "copy-assets": "mkdir -p dist/renderer && cp src/renderer/index.html dist/renderer/index.html",
+    "dev": "npm run build && electron .",
+    "postinstall": "electron-rebuild",
+    "dist": "npm run build && electron-builder"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.6.2",
+    "exceljs": "^4.4.0",
+    "menubar": "^9.5.2"
+  },
+  "devDependencies": {
+    "@electron/rebuild": "^3.6.0",
+    "@types/better-sqlite3": "^7.6.11",
+    "@types/node": "^22.10.0",
+    "electron": "^34.0.0",
+    "electron-builder": "^25.1.8",
+    "typescript": "^5.7.2"
+  },
+  "build": {
+    "appId": "com.jasongreen.timetracker",
+    "productName": "Time Tracker",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "assets/**/*"
+    ],
+    "asarUnpack": [
+      "**/*.node"
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": [
+        "dmg"
+      ]
+    }
+  }
+}

@@ -1,0 +1,14 @@
+node_modules/
+dist/
+release/
+out/
+*.log
+
+# OS junk
+.DS_Store
+
+# Local tooling state
+.claude/
+
+#Ignore cursor AI rules
+.cursor/rules/codacy.mdc

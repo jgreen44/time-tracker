@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>Time Tracker</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+      font-size: 13px;
+      background: #f5f5f5;
+      color: #1d1d1f;
+    }
+    .container { padding: 12px; }
+    select, button, input[type="text"] {
+      width: 100%;
+      padding: 6px;
+      font-size: 13px;
+      margin-bottom: 8px;
+      box-sizing: border-box;
+      font-family: inherit;
+    }
+    #elapsed {
+      font-size: 22px;
+      font-weight: 600;
+      text-align: center;
+      margin: 8px 0;
+    }
+    #startStop.running { background: #ff3b30; color: white; }
+    #startStop.stopped { background: #34c759; color: white; }
+    h3 { margin: 12px 0 4px; font-size: 12px; color: #666; text-transform: uppercase; }
+    .summary-row { display: flex; justify-content: space-between; padding: 2px 0; }
+    #addProjectBtn, #exportBtn { background: #eee; }
+    #exportStatus { font-size: 11px; color: #666; text-align: center; min-height: 14px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <select id="projectSelect"></select>
+    <button id="addProjectBtn">+ Add Project</button>
+    <input type="text" id="noteInput" placeholder="What are you working on? (optional)" />
+    <div id="elapsed">00:00:00</div>
+    <button id="startStop" class="stopped">Start</button>
+    <h3>Today</h3>
+    <div id="summary"></div>
+    <button id="exportBtn">Export to Excel</button>
+    <div id="exportStatus"></div>
+  </div>
+  <script src="renderer.js"></script>
+</body>
+</html>
