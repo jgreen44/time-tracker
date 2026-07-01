@@ -6,10 +6,17 @@ const summaryEl = document.getElementById('summary') as HTMLDivElement;
 const exportBtn = document.getElementById('exportBtn') as HTMLButtonElement;
 const exportStatusEl = document.getElementById('exportStatus') as HTMLDivElement;
 const noteInput = document.getElementById('noteInput') as HTMLInputElement;
+const rateInput = document.getElementById('rateInput') as HTMLInputElement;
+const currentEarningsEl = document.getElementById('currentEarnings') as HTMLDivElement;
+const earningsTodayEl = document.getElementById('earningsToday') as HTMLSpanElement;
+const earningsWeekEl = document.getElementById('earningsWeek') as HTMLSpanElement;
+const earningsAllTimeEl = document.getElementById('earningsAllTime') as HTMLSpanElement;
 
 let activeEntry: Awaited<ReturnType<typeof window.api.getActiveEntry>> = null;
+let projects: Awaited<ReturnType<typeof window.api.listProjects>> = [];
 let tickHandle: number | undefined;
 let noteSaveHandle: number | undefined;
+let rateSaveHandle: number | undefined;
 
 function formatDuration(ms: number): string {
   const totalSeconds = Math.floor(ms / 1000);
@@ -19,8 +26,16 @@ function formatDuration(ms: number): string {
   return [hours, minutes, seconds].map((n) => String(n).padStart(2, '0')).join(':');
 }
 
+function formatMoney(amount: number): string {
+  return `$${amount.toFixed(2)}`;
+}
+
+function currentProject() {
+  return projects.find((p) => p.id === Number(projectSelect.value));
+}
+
 async function refreshProjects() {
-  const projects = await window.api.listProjects();
+  projects = await window.api.listProjects();
   projectSelect.innerHTML = '';
   for (const project of projects) {
     const option = document.createElement('option');
@@ -31,6 +46,7 @@ async function refreshProjects() {
   if (activeEntry) {
     projectSelect.value = String(activeEntry.project_id);
   }
+  rateInput.value = currentProject()?.hourly_rate != null ? String(currentProject()!.hourly_rate) : '';
 }
 
 async function refreshSummary() {
@@ -48,12 +64,23 @@ async function refreshSummary() {
   }
 }
 
+async function refreshEarnings() {
+  const earnings = await window.api.getEarningsSummary();
+  earningsTodayEl.textContent = formatMoney(earnings.today);
+  earningsWeekEl.textContent = formatMoney(earnings.week);
+  earningsAllTimeEl.textContent = formatMoney(earnings.allTime);
+}
+
 function tick() {
   if (!activeEntry) {
     elapsedEl.textContent = '00:00:00';
+    currentEarningsEl.textContent = formatMoney(0);
     return;
   }
-  elapsedEl.textContent = formatDuration(Date.now() - activeEntry.started_at);
+  const elapsedMs = Date.now() - activeEntry.started_at;
+  elapsedEl.textContent = formatDuration(elapsedMs);
+  const rate = activeEntry.hourly_rate ?? 0;
+  currentEarningsEl.textContent = formatMoney((elapsedMs / 3600000) * rate);
 }
 
 function setRunningUi(running: boolean) {
@@ -66,10 +93,17 @@ async function refreshActiveEntry() {
   activeEntry = await window.api.getActiveEntry();
   setRunningUi(!!activeEntry);
   noteInput.value = activeEntry?.note ?? '';
+  if (activeEntry) {
+    projectSelect.value = String(activeEntry.project_id);
+    rateInput.value = activeEntry.hourly_rate != null ? String(activeEntry.hourly_rate) : '';
+  }
   if (tickHandle) clearInterval(tickHandle);
   tick();
   if (activeEntry) {
-    tickHandle = window.setInterval(tick, 1000);
+    tickHandle = window.setInterval(() => {
+      tick();
+      refreshEarnings();
+    }, 1000);
   }
 }
 
@@ -94,6 +128,24 @@ noteInput.addEventListener('input', () => {
   }, 500);
 });
 
+projectSelect.addEventListener('change', () => {
+  const project = currentProject();
+  rateInput.value = project?.hourly_rate != null ? String(project.hourly_rate) : '';
+});
+
+rateInput.addEventListener('input', () => {
+  const project = currentProject();
+  if (!project) return;
+  if (rateSaveHandle) clearTimeout(rateSaveHandle);
+  rateSaveHandle = window.setTimeout(() => {
+    const value = rateInput.value.trim();
+    const rate = value === '' ? null : Number(value);
+    window.api.updateProjectRate(project.id, Number.isFinite(rate) ? rate : null).then(() => {
+      project.hourly_rate = rate;
+    });
+  }, 500);
+});
+
 addProjectBtn.addEventListener('click', async () => {
   const project = await window.api.addProject();
   if (project) {
@@ -109,8 +161,12 @@ exportBtn.addEventListener('click', async () => {
 });
 
 (async () => {
-  await refreshActiveEntry();
   await refreshProjects();
+  await refreshActiveEntry();
   await refreshSummary();
+  await refreshEarnings();
   setInterval(refreshSummary, 30000);
+  if (!activeEntry) {
+    setInterval(refreshEarnings, 30000);
+  }
 })();

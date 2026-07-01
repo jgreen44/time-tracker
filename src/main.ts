@@ -11,7 +11,7 @@ const mb = menubar({
   preloadWindow: true,
   browserWindow: {
     width: 320,
-    height: 420,
+    height: 560,
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
@@ -57,6 +57,10 @@ ipcMain.handle('entries:stop', () => {
 });
 ipcMain.handle('entries:updateNote', (_event, entryId: number, note: string) => db.updateEntryNote(entryId, note));
 ipcMain.handle('entries:todaySummary', () => db.getTodaySummary());
+ipcMain.handle('entries:earningsSummary', () => db.getEarningsSummary());
+ipcMain.handle('projects:updateRate', (_event, projectId: number, hourlyRate: number | null) =>
+  db.updateProjectRate(projectId, hourlyRate)
+);
 
 function formatLocalDate(ms: number): string {
   return new Date(ms).toLocaleDateString();
@@ -87,19 +91,26 @@ ipcMain.handle('entries:exportExcel', async () => {
     { header: 'Stop Date', key: 'stopDate', width: 14 },
     { header: 'Stop Time', key: 'stopTime', width: 14 },
     { header: 'Duration (hours)', key: 'durationHours', width: 18 },
+    { header: 'Hourly Rate', key: 'hourlyRate', width: 14 },
+    { header: 'Earnings', key: 'earnings', width: 14 },
     { header: 'Note', key: 'note', width: 30 },
   ];
 
   sheet.addRows(
-    entries.map((entry) => ({
-      project: entry.project_name,
-      startDate: formatLocalDate(entry.started_at),
-      startTime: formatLocalTime(entry.started_at),
-      stopDate: entry.ended_at ? formatLocalDate(entry.ended_at) : '',
-      stopTime: entry.ended_at ? formatLocalTime(entry.ended_at) : '',
-      durationHours: entry.ended_at ? (entry.ended_at - entry.started_at) / 3600000 : null,
-      note: entry.note ?? '',
-    }))
+    entries.map((entry) => {
+      const durationHours = entry.ended_at ? (entry.ended_at - entry.started_at) / 3600000 : null;
+      return {
+        project: entry.project_name,
+        startDate: formatLocalDate(entry.started_at),
+        startTime: formatLocalTime(entry.started_at),
+        stopDate: entry.ended_at ? formatLocalDate(entry.ended_at) : '',
+        stopTime: entry.ended_at ? formatLocalTime(entry.ended_at) : '',
+        durationHours,
+        hourlyRate: entry.hourly_rate ?? '',
+        earnings: durationHours !== null && entry.hourly_rate ? durationHours * entry.hourly_rate : '',
+        note: entry.note ?? '',
+      };
+    })
   );
 
   await workbook.xlsx.writeFile(result.filePath);

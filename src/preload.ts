@@ -9,4 +9,7 @@ contextBridge.exposeInMainWorld('api', {
   updateNote: (entryId: number, note: string) => ipcRenderer.invoke('entries:updateNote', entryId, note),
   getTodaySummary: () => ipcRenderer.invoke('entries:todaySummary'),
   exportExcel: () => ipcRenderer.invoke('entries:exportExcel'),
+  getEarningsSummary: () => ipcRenderer.invoke('entries:earningsSummary'),
+  updateProjectRate: (projectId: number, hourlyRate: number | null) =>
+    ipcRenderer.invoke('projects:updateRate', projectId, hourlyRate),
 });

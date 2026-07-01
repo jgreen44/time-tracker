@@ -6,6 +6,7 @@ export interface Project {
   id: number;
   name: string;
   repo_path: string | null;
+  hourly_rate: number | null;
 }
 
 export interface Entry {
@@ -14,6 +15,7 @@ export interface Entry {
   started_at: number;
   ended_at: number | null;
   note: string | null;
+  hourly_rate: number | null;
 }
 
 export interface ProjectSummary {
@@ -30,16 +32,27 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS projects (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL UNIQUE,
-    repo_path TEXT
+    repo_path TEXT,
+    hourly_rate REAL
   );
   CREATE TABLE IF NOT EXISTS entries (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     project_id INTEGER NOT NULL REFERENCES projects(id),
     started_at INTEGER NOT NULL,
     ended_at INTEGER,
-    note TEXT
+    note TEXT,
+    hourly_rate REAL
   );
 `);
+
+const projectColumns = db.prepare("PRAGMA table_info(projects)").all() as { name: string }[];
+if (!projectColumns.some((c) => c.name === 'hourly_rate')) {
+  db.exec('ALTER TABLE projects ADD COLUMN hourly_rate REAL');
+}
+const entryColumns = db.prepare("PRAGMA table_info(entries)").all() as { name: string }[];
+if (!entryColumns.some((c) => c.name === 'hourly_rate')) {
+  db.exec('ALTER TABLE entries ADD COLUMN hourly_rate REAL');
+}
 
 export function listProjects(): Project[] {
   return db.prepare('SELECT * FROM projects ORDER BY name').all() as Project[];
@@ -50,6 +63,10 @@ export function addProject(name: string, repoPath: string | null): Project {
   if (existing) return existing;
   const info = db.prepare('INSERT INTO projects (name, repo_path) VALUES (?, ?)').run(name, repoPath);
   return db.prepare('SELECT * FROM projects WHERE id = ?').get(info.lastInsertRowid) as Project;
+}
+
+export function updateProjectRate(projectId: number, hourlyRate: number | null): void {
+  db.prepare('UPDATE projects SET hourly_rate = ? WHERE id = ?').run(hourlyRate, projectId);
 }
 
 export function getActiveEntry(): (Entry & { project_name: string }) | undefined {
@@ -65,9 +82,10 @@ export function getActiveEntry(): (Entry & { project_name: string }) | undefined
 
 export function startEntry(projectId: number, note?: string): Entry {
   stopActiveEntry();
+  const project = db.prepare('SELECT * FROM projects WHERE id = ?').get(projectId) as Project | undefined;
   const info = db
-    .prepare('INSERT INTO entries (project_id, started_at, note) VALUES (?, ?, ?)')
-    .run(projectId, Date.now(), note ?? null);
+    .prepare('INSERT INTO entries (project_id, started_at, note, hourly_rate) VALUES (?, ?, ?, ?)')
+    .run(projectId, Date.now(), note ?? null, project?.hourly_rate ?? null);
   return db.prepare('SELECT * FROM entries WHERE id = ?').get(info.lastInsertRowid) as Entry;
 }
 
@@ -111,18 +129,65 @@ export function getTodaySummary(): ProjectSummary[] {
   return Array.from(totals.values()).sort((a, b) => b.total_ms - a.total_ms);
 }
 
+export interface EarningsSummary {
+  today: number;
+  week: number;
+  allTime: number;
+}
+
+function earningsSince(sinceMs: number | null): number {
+  const now = Date.now();
+  const rows = db
+    .prepare(
+      sinceMs === null
+        ? `SELECT started_at, ended_at, hourly_rate FROM entries`
+        : `SELECT started_at, ended_at, hourly_rate FROM entries WHERE started_at >= ? OR ended_at IS NULL`
+    )
+    .all(...(sinceMs === null ? [] : [sinceMs])) as {
+    started_at: number;
+    ended_at: number | null;
+    hourly_rate: number | null;
+  }[];
+
+  let total = 0;
+  for (const row of rows) {
+    if (!row.hourly_rate) continue;
+    const end = row.ended_at ?? now;
+    const start = sinceMs === null ? row.started_at : Math.max(row.started_at, sinceMs);
+    if (end <= start) continue;
+    const hours = (end - start) / 3600000;
+    total += hours * row.hourly_rate;
+  }
+  return total;
+}
+
+export function getEarningsSummary(): EarningsSummary {
+  const startOfDay = new Date();
+  startOfDay.setHours(0, 0, 0, 0);
+
+  const startOfWeek = new Date(startOfDay);
+  startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay());
+
+  return {
+    today: earningsSince(startOfDay.getTime()),
+    week: earningsSince(startOfWeek.getTime()),
+    allTime: earningsSince(null),
+  };
+}
+
 export interface EntryWithProject {
   id: number;
   project_name: string;
   started_at: number;
   ended_at: number | null;
   note: string | null;
+  hourly_rate: number | null;
 }
 
 export function listAllEntries(): EntryWithProject[] {
   return db
     .prepare(
-      `SELECT entries.id, projects.name AS project_name, entries.started_at, entries.ended_at, entries.note
+      `SELECT entries.id, projects.name AS project_name, entries.started_at, entries.ended_at, entries.note, entries.hourly_rate
        FROM entries JOIN projects ON projects.id = entries.project_id
        ORDER BY entries.started_at DESC`
     )
