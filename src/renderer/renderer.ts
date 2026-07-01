@@ -11,12 +11,18 @@ const currentEarningsEl = document.getElementById('currentEarnings') as HTMLDivE
 const earningsTodayEl = document.getElementById('earningsToday') as HTMLSpanElement;
 const earningsWeekEl = document.getElementById('earningsWeek') as HTMLSpanElement;
 const earningsAllTimeEl = document.getElementById('earningsAllTime') as HTMLSpanElement;
+const historyBtn = document.getElementById('historyBtn') as HTMLButtonElement;
+const backBtn = document.getElementById('backBtn') as HTMLButtonElement;
+const mainView = document.getElementById('mainView') as HTMLDivElement;
+const historyView = document.getElementById('historyView') as HTMLDivElement;
+const historyListEl = document.getElementById('historyList') as HTMLDivElement;
 
 let activeEntry: Awaited<ReturnType<typeof window.api.getActiveEntry>> = null;
 let projects: Awaited<ReturnType<typeof window.api.listProjects>> = [];
 let tickHandle: number | undefined;
 let noteSaveHandle: number | undefined;
 let rateSaveHandle: number | undefined;
+const entryRateSaveHandles = new Map<number, number>();
 
 function formatDuration(ms: number): string {
   const totalSeconds = Math.floor(ms / 1000);
@@ -70,6 +76,82 @@ async function refreshEarnings() {
   earningsWeekEl.textContent = formatMoney(earnings.week);
   earningsAllTimeEl.textContent = formatMoney(earnings.allTime);
 }
+
+function formatDateTime(ms: number): string {
+  return new Date(ms).toLocaleString();
+}
+
+async function refreshHistory() {
+  const entries = await window.api.listEntries();
+  historyListEl.innerHTML = '';
+  if (entries.length === 0) {
+    historyListEl.textContent = 'No entries yet.';
+    return;
+  }
+  for (const entry of entries) {
+    const row = document.createElement('div');
+    row.className = 'entry-row';
+
+    const durationHours = entry.ended_at ? (entry.ended_at - entry.started_at) / 3600000 : 0;
+    const earnings = entry.hourly_rate ? durationHours * entry.hourly_rate : 0;
+
+    const top = document.createElement('div');
+    top.className = 'entry-top';
+    top.innerHTML = `<span>${entry.project_name}</span><span>${entry.ended_at ? formatDuration(entry.ended_at - entry.started_at) : 'running'}</span>`;
+    row.appendChild(top);
+
+    const meta = document.createElement('div');
+    meta.className = 'entry-meta';
+    meta.textContent = `${formatDateTime(entry.started_at)}${entry.ended_at ? ' – ' + formatDateTime(entry.ended_at) : ''}${entry.note ? ' · ' + entry.note : ''}`;
+    row.appendChild(meta);
+
+    const rateRow = document.createElement('div');
+    rateRow.className = 'entry-rate-row';
+    const label = document.createElement('label');
+    label.textContent = '$/hr';
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.min = '0';
+    input.step = '0.01';
+    input.placeholder = '0.00';
+    input.value = entry.hourly_rate != null ? String(entry.hourly_rate) : '';
+    const earningsSpan = document.createElement('span');
+    earningsSpan.className = 'entry-earnings';
+    earningsSpan.textContent = formatMoney(earnings);
+
+    input.addEventListener('input', () => {
+      const existing = entryRateSaveHandles.get(entry.id);
+      if (existing) clearTimeout(existing);
+      const handle = window.setTimeout(async () => {
+        const value = input.value.trim();
+        const rate = value === '' ? null : Number(value);
+        await window.api.updateEntryRate(entry.id, Number.isFinite(rate) ? rate : null);
+        const newEarnings = rate ? durationHours * rate : 0;
+        earningsSpan.textContent = formatMoney(newEarnings);
+        await refreshEarnings();
+      }, 500);
+      entryRateSaveHandles.set(entry.id, handle);
+    });
+
+    rateRow.appendChild(label);
+    rateRow.appendChild(input);
+    rateRow.appendChild(earningsSpan);
+    row.appendChild(rateRow);
+
+    historyListEl.appendChild(row);
+  }
+}
+
+historyBtn.addEventListener('click', async () => {
+  mainView.style.display = 'none';
+  historyView.style.display = 'block';
+  await refreshHistory();
+});
+
+backBtn.addEventListener('click', () => {
+  historyView.style.display = 'none';
+  mainView.style.display = 'block';
+});
 
 function tick() {
   if (!activeEntry) {

@@ -56,6 +56,10 @@ ipcMain.handle('entries:stop', () => {
   return null;
 });
 ipcMain.handle('entries:updateNote', (_event, entryId: number, note: string) => db.updateEntryNote(entryId, note));
+ipcMain.handle('entries:updateRate', (_event, entryId: number, hourlyRate: number | null) =>
+  db.updateEntryRate(entryId, hourlyRate)
+);
+ipcMain.handle('entries:list', () => db.listAllEntries());
 ipcMain.handle('entries:todaySummary', () => db.getTodaySummary());
 ipcMain.handle('entries:earningsSummary', () => db.getEarningsSummary());
 ipcMain.handle('projects:updateRate', (_event, projectId: number, hourlyRate: number | null) =>
