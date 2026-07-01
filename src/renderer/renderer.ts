@@ -126,20 +126,25 @@ async function refreshHistory() {
     earningsSpan.textContent = formatMoney(earnings);
 
     if (entry.ended_at !== null) {
-      const timeRow = document.createElement('div');
-      timeRow.className = 'entry-time-row';
-
+      const startGroup = document.createElement('div');
+      startGroup.className = 'field-group';
       const startLabel = document.createElement('label');
       startLabel.textContent = 'Start';
       const startInput = document.createElement('input');
       startInput.type = 'datetime-local';
       startInput.value = toDatetimeLocalValue(entry.started_at);
+      startGroup.appendChild(startLabel);
+      startGroup.appendChild(startInput);
 
+      const stopGroup = document.createElement('div');
+      stopGroup.className = 'field-group';
       const stopLabel = document.createElement('label');
       stopLabel.textContent = 'Stop';
       const stopInput = document.createElement('input');
       stopInput.type = 'datetime-local';
       stopInput.value = toDatetimeLocalValue(entry.ended_at);
+      stopGroup.appendChild(stopLabel);
+      stopGroup.appendChild(stopInput);
 
       const saveTimes = () => {
         const existing = entryTimeSaveHandles.get(entry.id);
@@ -168,11 +173,8 @@ async function refreshHistory() {
       startInput.addEventListener('input', saveTimes);
       stopInput.addEventListener('input', saveTimes);
 
-      timeRow.appendChild(startLabel);
-      timeRow.appendChild(startInput);
-      timeRow.appendChild(stopLabel);
-      timeRow.appendChild(stopInput);
-      row.appendChild(timeRow);
+      row.appendChild(startGroup);
+      row.appendChild(stopGroup);
     } else {
       const runningNote = document.createElement('div');
       runningNote.className = 'entry-meta';
@@ -180,8 +182,8 @@ async function refreshHistory() {
       row.appendChild(runningNote);
     }
 
-    const rateRow = document.createElement('div');
-    rateRow.className = 'entry-rate-row';
+    const rateGroup = document.createElement('div');
+    rateGroup.className = 'field-group';
     const label = document.createElement('label');
     label.textContent = '$/hr';
     const input = document.createElement('input');
@@ -205,10 +207,10 @@ async function refreshHistory() {
       entryRateSaveHandles.set(entry.id, handle);
     });
 
-    rateRow.appendChild(label);
-    rateRow.appendChild(input);
-    rateRow.appendChild(earningsSpan);
-    row.appendChild(rateRow);
+    rateGroup.appendChild(label);
+    rateGroup.appendChild(input);
+    row.appendChild(rateGroup);
+    row.appendChild(earningsSpan);
     row.appendChild(statusEl);
 
     historyListEl.appendChild(row);
