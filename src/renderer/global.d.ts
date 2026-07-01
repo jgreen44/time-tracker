@@ -14,7 +14,7 @@ interface TimeTrackerApi {
   updateNote(entryId: number, note: string): Promise<void>;
   updateEntryRate(entryId: number, hourlyRate: number | null): Promise<void>;
   updateEntryTimes(entryId: number, startedAt: number, endedAt: number | null): Promise<void>;
-  listEntries(): Promise<
+  listEntriesPage(limit: number, offset: number): Promise<
     {
       id: number;
       project_name: string;
@@ -24,6 +24,15 @@ interface TimeTrackerApi {
       hourly_rate: number | null;
     }[]
   >;
+  countEntries(): Promise<number>;
+  createManualEntry(
+    projectId: number,
+    startedAt: number,
+    endedAt: number,
+    note: string | null,
+    hourlyRate: number | null
+  ): Promise<unknown>;
+  deleteEntry(entryId: number): Promise<void>;
   getTodaySummary(): Promise<{ project_id: number; project_name: string; total_ms: number }[]>;
   exportExcel(): Promise<string | null>;
   getEarningsSummary(projectId?: number | null): Promise<{ today: number; week: number; allTime: number }>;

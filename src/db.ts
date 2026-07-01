@@ -101,6 +101,23 @@ export function updateEntryTimes(entryId: number, startedAt: number, endedAt: nu
   db.prepare('UPDATE entries SET started_at = ?, ended_at = ? WHERE id = ?').run(startedAt, endedAt, entryId);
 }
 
+export function createManualEntry(
+  projectId: number,
+  startedAt: number,
+  endedAt: number,
+  note: string | null,
+  hourlyRate: number | null
+): Entry {
+  const info = db
+    .prepare('INSERT INTO entries (project_id, started_at, ended_at, note, hourly_rate) VALUES (?, ?, ?, ?, ?)')
+    .run(projectId, startedAt, endedAt, note || null, hourlyRate);
+  return db.prepare('SELECT * FROM entries WHERE id = ?').get(info.lastInsertRowid) as Entry;
+}
+
+export function deleteEntry(entryId: number): void {
+  db.prepare('DELETE FROM entries WHERE id = ?').run(entryId);
+}
+
 export function stopActiveEntry(): void {
   const active = getActiveEntry();
   if (!active) return;
@@ -208,6 +225,22 @@ export function listAllEntries(): EntryWithProject[] {
        ORDER BY entries.started_at DESC`
     )
     .all() as EntryWithProject[];
+}
+
+export function listEntriesPage(limit: number, offset: number): EntryWithProject[] {
+  return db
+    .prepare(
+      `SELECT entries.id, projects.name AS project_name, entries.started_at, entries.ended_at, entries.note, entries.hourly_rate
+       FROM entries JOIN projects ON projects.id = entries.project_id
+       ORDER BY entries.started_at DESC
+       LIMIT ? OFFSET ?`
+    )
+    .all(limit, offset) as EntryWithProject[];
+}
+
+export function countAllEntries(): number {
+  const row = db.prepare('SELECT COUNT(*) AS count FROM entries').get() as { count: number };
+  return row.count;
 }
 
 export function closeDb(): void {

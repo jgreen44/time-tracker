@@ -11,7 +11,11 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('entries:updateRate', entryId, hourlyRate),
   updateEntryTimes: (entryId: number, startedAt: number, endedAt: number | null) =>
     ipcRenderer.invoke('entries:updateTimes', entryId, startedAt, endedAt),
-  listEntries: () => ipcRenderer.invoke('entries:list'),
+  listEntriesPage: (limit: number, offset: number) => ipcRenderer.invoke('entries:listPage', limit, offset),
+  countEntries: () => ipcRenderer.invoke('entries:count'),
+  createManualEntry: (projectId: number, startedAt: number, endedAt: number, note: string | null, hourlyRate: number | null) =>
+    ipcRenderer.invoke('entries:createManual', projectId, startedAt, endedAt, note, hourlyRate),
+  deleteEntry: (entryId: number) => ipcRenderer.invoke('entries:delete', entryId),
   getTodaySummary: () => ipcRenderer.invoke('entries:todaySummary'),
   exportExcel: () => ipcRenderer.invoke('entries:exportExcel'),
   getEarningsSummary: (projectId: number | null) => ipcRenderer.invoke('entries:earningsSummary', projectId),

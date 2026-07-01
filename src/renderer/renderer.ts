@@ -16,8 +16,19 @@ const backBtn = document.getElementById('backBtn') as HTMLButtonElement;
 const mainView = document.getElementById('mainView') as HTMLDivElement;
 const historyView = document.getElementById('historyView') as HTMLDivElement;
 const historyListEl = document.getElementById('historyList') as HTMLDivElement;
+const loadMoreBtn = document.getElementById('loadMoreBtn') as HTMLButtonElement;
 const earningsProjectSelect = document.getElementById('earningsProjectSelect') as HTMLSelectElement;
 const themeToggle = document.getElementById('themeToggle') as HTMLButtonElement;
+const addEntryBtn = document.getElementById('addEntryBtn') as HTMLButtonElement;
+const addEntryForm = document.getElementById('addEntryForm') as HTMLDivElement;
+const addEntryProjectSelect = document.getElementById('addEntryProjectSelect') as HTMLSelectElement;
+const addEntryStart = document.getElementById('addEntryStart') as HTMLInputElement;
+const addEntryStop = document.getElementById('addEntryStop') as HTMLInputElement;
+const addEntryRate = document.getElementById('addEntryRate') as HTMLInputElement;
+const addEntryNote = document.getElementById('addEntryNote') as HTMLInputElement;
+const addEntryStatus = document.getElementById('addEntryStatus') as HTMLDivElement;
+const addEntryCancelBtn = document.getElementById('addEntryCancelBtn') as HTMLButtonElement;
+const addEntrySaveBtn = document.getElementById('addEntrySaveBtn') as HTMLButtonElement;
 
 const THEME_STORAGE_KEY = 'time-tracker-theme';
 
@@ -142,29 +153,70 @@ function fromDatetimeLocalValue(value: string): number | null {
   return Number.isFinite(ms) ? ms : null;
 }
 
-async function refreshHistory() {
-  const entries = await window.api.listEntries();
-  historyListEl.innerHTML = '';
-  if (entries.length === 0) {
-    historyListEl.textContent = 'No entries yet.';
-    return;
-  }
-  for (const entry of entries) {
-    const row = document.createElement('div');
-    row.className = 'entry-row';
+function formatDateLabel(ms: number): string {
+  return new Date(ms).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+}
 
-    let durationHours = entry.ended_at ? (entry.ended_at - entry.started_at) / 3600000 : 0;
-    const earnings = entry.hourly_rate ? durationHours * entry.hourly_rate : 0;
+function formatTimeOnly(ms: number): string {
+  return new Date(ms).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+}
 
-    const top = document.createElement('div');
-    top.className = 'entry-top';
-    top.innerHTML = `<span>${entry.project_name}</span><span>${entry.ended_at ? formatDuration(entry.ended_at - entry.started_at) : 'running'}</span>`;
-    row.appendChild(top);
+const HISTORY_PAGE_SIZE = 30;
+let historyOffset = 0;
+let historyTotalCount = 0;
+let historyLastDateKey: string | null = null;
 
+type HistoryEntry = Awaited<ReturnType<typeof window.api.listEntriesPage>>[number];
+
+function buildEntryRow(entry: HistoryEntry): HTMLDivElement {
+  const row = document.createElement('div');
+  row.className = 'entry-row';
+
+  let durationHours = entry.ended_at ? (entry.ended_at - entry.started_at) / 3600000 : 0;
+  const earnings = entry.hourly_rate ? durationHours * entry.hourly_rate : 0;
+
+  const summaryEl = document.createElement('div');
+  summaryEl.className = 'entry-summary';
+
+  const chevron = document.createElement('span');
+  chevron.className = 'chevron';
+  chevron.textContent = '▶';
+
+  const main = document.createElement('div');
+  main.className = 'entry-summary-main';
+  const top = document.createElement('div');
+  top.className = 'entry-summary-top';
+  top.innerHTML = `<span>${entry.project_name}</span><span class="duration">${entry.ended_at ? formatDuration(entry.ended_at - entry.started_at) : 'running'}</span>`;
+  const timeLine = document.createElement('div');
+  timeLine.className = 'entry-summary-time';
+  timeLine.textContent = entry.ended_at
+    ? `${formatTimeOnly(entry.started_at)} – ${formatTimeOnly(entry.ended_at)}${entry.note ? ' · ' + entry.note : ''}`
+    : `Started ${formatTimeOnly(entry.started_at)} · still running`;
+  main.appendChild(top);
+  main.appendChild(timeLine);
+
+  summaryEl.appendChild(chevron);
+  summaryEl.appendChild(main);
+  row.appendChild(summaryEl);
+
+  const details = document.createElement('div');
+  details.className = 'entry-details';
+  let detailsBuilt = false;
+
+  summaryEl.addEventListener('click', () => {
+    const expanding = !row.classList.contains('expanded');
+    row.classList.toggle('expanded', expanding);
+    if (expanding && !detailsBuilt) {
+      buildDetails();
+      detailsBuilt = true;
+    }
+  });
+
+  function buildDetails() {
     const meta = document.createElement('div');
     meta.className = 'entry-meta';
     meta.textContent = entry.note ?? '';
-    row.appendChild(meta);
+    if (entry.note) details.appendChild(meta);
 
     const statusEl = document.createElement('div');
     statusEl.className = 'entry-save-status';
@@ -202,16 +254,16 @@ async function refreshHistory() {
           const newEnd = fromDatetimeLocalValue(stopInput.value);
           if (newStart === null || newEnd === null || newEnd <= newStart) {
             statusEl.textContent = 'Stop must be after start.';
-            statusEl.style.color = '#d1242f';
+            statusEl.style.color = 'var(--danger)';
             return;
           }
           await window.api.updateEntryTimes(entry.id, newStart, newEnd);
           durationHours = (newEnd - newStart) / 3600000;
-          top.querySelector('span:last-child')!.textContent = formatDuration(newEnd - newStart);
+          top.querySelector('.duration')!.textContent = formatDuration(newEnd - newStart);
           const rate = entry.hourly_rate ?? 0;
           earningsSpan.textContent = formatMoney(durationHours * rate);
           statusEl.textContent = 'Saved.';
-          statusEl.style.color = '#1a7f37';
+          statusEl.style.color = 'var(--success)';
           await refreshEarnings();
           await refreshSummary();
         }, 500);
@@ -221,13 +273,8 @@ async function refreshHistory() {
       startInput.addEventListener('input', saveTimes);
       stopInput.addEventListener('input', saveTimes);
 
-      row.appendChild(startGroup);
-      row.appendChild(stopGroup);
-    } else {
-      const runningNote = document.createElement('div');
-      runningNote.className = 'entry-meta';
-      runningNote.textContent = `Started ${formatDateTime(entry.started_at)} · still running`;
-      row.appendChild(runningNote);
+      details.appendChild(startGroup);
+      details.appendChild(stopGroup);
     }
 
     const rateGroup = document.createElement('div');
@@ -257,18 +304,135 @@ async function refreshHistory() {
 
     rateGroup.appendChild(label);
     rateGroup.appendChild(input);
-    row.appendChild(rateGroup);
-    row.appendChild(earningsSpan);
-    row.appendChild(statusEl);
+    details.appendChild(rateGroup);
+    details.appendChild(earningsSpan);
+    details.appendChild(statusEl);
 
-    historyListEl.appendChild(row);
+    const deleteBtn = document.createElement('button');
+    deleteBtn.className = 'btn-danger delete-btn';
+    deleteBtn.textContent = 'Delete Entry';
+    deleteBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      if (deleteBtn.textContent === 'Delete Entry') {
+        deleteBtn.textContent = 'Click again to confirm';
+        return;
+      }
+      await window.api.deleteEntry(entry.id);
+      row.remove();
+      historyTotalCount--;
+      historyOffset--;
+      await refreshEarnings();
+      await refreshSummary();
+    });
+    details.appendChild(deleteBtn);
+  }
+
+  row.appendChild(details);
+  return row;
+}
+
+function appendEntries(entries: HistoryEntry[]) {
+  let currentGroup: HTMLDivElement | null = null;
+  for (const entry of entries) {
+    const dateKey = new Date(entry.started_at).toDateString();
+    if (dateKey !== historyLastDateKey) {
+      currentGroup = document.createElement('div');
+      currentGroup.className = 'date-group';
+      const header = document.createElement('div');
+      header.className = 'date-group-header';
+      header.textContent = formatDateLabel(entry.started_at);
+      currentGroup.appendChild(header);
+      historyListEl.appendChild(currentGroup);
+      historyLastDateKey = dateKey;
+    } else if (!currentGroup) {
+      currentGroup = historyListEl.lastElementChild as HTMLDivElement;
+    }
+    currentGroup!.appendChild(buildEntryRow(entry));
   }
 }
+
+async function refreshHistory() {
+  historyListEl.innerHTML = '';
+  historyOffset = 0;
+  historyLastDateKey = null;
+  historyTotalCount = await window.api.countEntries();
+  if (historyTotalCount === 0) {
+    const empty = document.createElement('div');
+    empty.id = 'historyEmptyState';
+    empty.textContent = 'No entries yet.';
+    historyListEl.appendChild(empty);
+    loadMoreBtn.style.display = 'none';
+    return;
+  }
+  const entries = await window.api.listEntriesPage(HISTORY_PAGE_SIZE, historyOffset);
+  appendEntries(entries);
+  historyOffset += entries.length;
+  loadMoreBtn.style.display = historyOffset < historyTotalCount ? 'block' : 'none';
+}
+
+loadMoreBtn.addEventListener('click', async () => {
+  const entries = await window.api.listEntriesPage(HISTORY_PAGE_SIZE, historyOffset);
+  appendEntries(entries);
+  historyOffset += entries.length;
+  loadMoreBtn.style.display = historyOffset < historyTotalCount ? 'block' : 'none';
+});
 
 historyBtn.addEventListener('click', async () => {
   mainView.style.display = 'none';
   historyView.style.display = 'block';
   await refreshHistory();
+});
+
+function resetAddEntryForm() {
+  addEntryForm.style.display = 'none';
+  addEntryStart.value = '';
+  addEntryStop.value = '';
+  addEntryRate.value = '';
+  addEntryNote.value = '';
+  addEntryStatus.textContent = '';
+}
+
+addEntryBtn.addEventListener('click', () => {
+  addEntryProjectSelect.innerHTML = '';
+  for (const project of projects) {
+    const option = document.createElement('option');
+    option.value = String(project.id);
+    option.textContent = project.name;
+    addEntryProjectSelect.appendChild(option);
+  }
+  const selectedProject = projects.find((p) => p.id === Number(addEntryProjectSelect.value));
+  addEntryRate.value = selectedProject?.hourly_rate != null ? String(selectedProject.hourly_rate) : '';
+  addEntryForm.style.display = 'block';
+});
+
+addEntryProjectSelect.addEventListener('change', () => {
+  const selectedProject = projects.find((p) => p.id === Number(addEntryProjectSelect.value));
+  addEntryRate.value = selectedProject?.hourly_rate != null ? String(selectedProject.hourly_rate) : '';
+});
+
+addEntryCancelBtn.addEventListener('click', resetAddEntryForm);
+
+addEntrySaveBtn.addEventListener('click', async () => {
+  const projectId = Number(addEntryProjectSelect.value);
+  const start = fromDatetimeLocalValue(addEntryStart.value);
+  const end = fromDatetimeLocalValue(addEntryStop.value);
+  if (!projectId) {
+    addEntryStatus.textContent = 'Choose a project.';
+    addEntryStatus.style.color = 'var(--danger)';
+    return;
+  }
+  if (start === null || end === null || end <= start) {
+    addEntryStatus.textContent = 'Stop must be after start.';
+    addEntryStatus.style.color = 'var(--danger)';
+    return;
+  }
+  const rateValue = addEntryRate.value.trim();
+  const rate = rateValue === '' ? null : Number(rateValue);
+  await window.api.createManualEntry(projectId, start, end, addEntryNote.value.trim(), Number.isFinite(rate) ? rate : null);
+  resetAddEntryForm();
+  await refreshHistory();
+  await refreshEarnings();
+  await refreshSummary();
 });
 
 backBtn.addEventListener('click', () => {

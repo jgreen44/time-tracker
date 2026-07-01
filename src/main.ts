@@ -79,7 +79,14 @@ ipcMain.handle('entries:updateRate', (_event, entryId: number, hourlyRate: numbe
 ipcMain.handle('entries:updateTimes', (_event, entryId: number, startedAt: number, endedAt: number | null) =>
   db.updateEntryTimes(entryId, startedAt, endedAt)
 );
-ipcMain.handle('entries:list', () => db.listAllEntries());
+ipcMain.handle('entries:listPage', (_event, limit: number, offset: number) => db.listEntriesPage(limit, offset));
+ipcMain.handle('entries:count', () => db.countAllEntries());
+ipcMain.handle(
+  'entries:createManual',
+  (_event, projectId: number, startedAt: number, endedAt: number, note: string | null, hourlyRate: number | null) =>
+    db.createManualEntry(projectId, startedAt, endedAt, note, hourlyRate)
+);
+ipcMain.handle('entries:delete', (_event, entryId: number) => db.deleteEntry(entryId));
 ipcMain.handle('entries:todaySummary', () => db.getTodaySummary());
 ipcMain.handle('entries:earningsSummary', (_event, projectId: number | null) => db.getEarningsSummary(projectId));
 ipcMain.handle('projects:updateRate', (_event, projectId: number, hourlyRate: number | null) =>
