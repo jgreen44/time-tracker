@@ -8,8 +8,12 @@ A super simple Mac menu bar app for tracking time when developing software — b
 - Organize time by project, with project names auto-derived from a git repo's remote URL
 - Optional note per time entry, editable while the timer is running
 - Local SQLite storage — your data stays on your machine
+- Per-project hourly rate, locked into each entry at start time so changing a project's rate never rewrites past earnings
+- Live earnings totals for today, this week, and all time
 - "Today" summary of time tracked per project
+- "Edit Past Entries" view to correct a past entry's rate or start/stop time (e.g. to backfill time tracked before a rate was set)
 - Export all tracked time to an Excel (`.xlsx`) file, with separate local date/time columns for start and stop
+- Single-instance lock — launching the app while it's already running won't create a duplicate
 
 ## Tech stack
 
@@ -38,9 +42,11 @@ This packages a standalone `Time Tracker.app` (and a `.dmg` installer) into the 
 ## Usage
 
 1. Click the tray icon and choose **+ Add Project** to point at a project's git repo folder
-2. Optionally add a note describing what you're working on
+2. Set an hourly rate for the project (optional) and add a note describing what you're working on
 3. Click **Start** to begin tracking, **Stop** to end the session
-4. Click **Export to Excel** to save all tracked time to a spreadsheet
+4. Click **Edit Past Entries** to correct a past entry's rate or start/stop time
+5. Click **Export to Excel** to save all tracked time to a spreadsheet
+6. To quit the app, right-click the tray icon and choose **Quit Time Tracker**
 
 ## Author
 

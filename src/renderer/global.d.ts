@@ -13,6 +13,7 @@ interface TimeTrackerApi {
   stopEntry(): Promise<void>;
   updateNote(entryId: number, note: string): Promise<void>;
   updateEntryRate(entryId: number, hourlyRate: number | null): Promise<void>;
+  updateEntryTimes(entryId: number, startedAt: number, endedAt: number | null): Promise<void>;
   listEntries(): Promise<
     {
       id: number;

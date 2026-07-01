@@ -1,9 +1,14 @@
 import path from 'path';
 import { execFile } from 'child_process';
-import { app, dialog, ipcMain } from 'electron';
+import { app, dialog, ipcMain, Menu } from 'electron';
 import { menubar } from 'menubar';
 import ExcelJS from 'exceljs';
 import * as db from './db';
+
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+  process.exit(0);
+}
 
 const mb = menubar({
   index: `file://${path.join(__dirname, 'renderer', 'index.html')}`,
@@ -18,6 +23,18 @@ const mb = menubar({
       preload: path.join(__dirname, 'preload.js'),
     },
   },
+});
+
+mb.on('ready', () => {
+  const contextMenu = Menu.buildFromTemplate([
+    {
+      label: 'Quit Time Tracker',
+      click: () => app.quit(),
+    },
+  ]);
+  mb.tray.on('right-click', () => {
+    mb.tray.popUpContextMenu(contextMenu);
+  });
 });
 
 function deriveProjectName(repoPath: string): Promise<string> {
@@ -58,6 +75,9 @@ ipcMain.handle('entries:stop', () => {
 ipcMain.handle('entries:updateNote', (_event, entryId: number, note: string) => db.updateEntryNote(entryId, note));
 ipcMain.handle('entries:updateRate', (_event, entryId: number, hourlyRate: number | null) =>
   db.updateEntryRate(entryId, hourlyRate)
+);
+ipcMain.handle('entries:updateTimes', (_event, entryId: number, startedAt: number, endedAt: number | null) =>
+  db.updateEntryTimes(entryId, startedAt, endedAt)
 );
 ipcMain.handle('entries:list', () => db.listAllEntries());
 ipcMain.handle('entries:todaySummary', () => db.getTodaySummary());

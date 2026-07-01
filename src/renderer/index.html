@@ -12,7 +12,7 @@
       color: #1d1d1f;
     }
     .container { padding: 12px; }
-    select, button, input[type="text"], input[type="number"] {
+    select, button, input[type="text"], input[type="number"], input[type="datetime-local"] {
       width: 100%;
       padding: 6px;
       font-size: 13px;
@@ -71,6 +71,15 @@
     .entry-row .entry-rate-row label { font-size: 11px; color: #666; white-space: nowrap; }
     .entry-row .entry-rate-row input { margin-bottom: 0; padding: 3px; }
     .entry-row .entry-earnings { font-size: 11px; color: #1a7f37; margin-left: auto; }
+    .entry-row .entry-time-row {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      margin: 4px 0;
+    }
+    .entry-row .entry-time-row label { font-size: 11px; color: #666; white-space: nowrap; }
+    .entry-row .entry-time-row input { margin-bottom: 0; padding: 3px; font-size: 11px; }
+    .entry-row .entry-save-status { font-size: 10px; color: #1a7f37; min-height: 12px; }
   </style>
 </head>
 <body>

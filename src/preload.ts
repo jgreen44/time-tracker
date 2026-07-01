@@ -9,6 +9,8 @@ contextBridge.exposeInMainWorld('api', {
   updateNote: (entryId: number, note: string) => ipcRenderer.invoke('entries:updateNote', entryId, note),
   updateEntryRate: (entryId: number, hourlyRate: number | null) =>
     ipcRenderer.invoke('entries:updateRate', entryId, hourlyRate),
+  updateEntryTimes: (entryId: number, startedAt: number, endedAt: number | null) =>
+    ipcRenderer.invoke('entries:updateTimes', entryId, startedAt, endedAt),
   listEntries: () => ipcRenderer.invoke('entries:list'),
   getTodaySummary: () => ipcRenderer.invoke('entries:todaySummary'),
   exportExcel: () => ipcRenderer.invoke('entries:exportExcel'),

@@ -23,6 +23,7 @@ let tickHandle: number | undefined;
 let noteSaveHandle: number | undefined;
 let rateSaveHandle: number | undefined;
 const entryRateSaveHandles = new Map<number, number>();
+const entryTimeSaveHandles = new Map<number, number>();
 
 function formatDuration(ms: number): string {
   const totalSeconds = Math.floor(ms / 1000);
@@ -81,6 +82,18 @@ function formatDateTime(ms: number): string {
   return new Date(ms).toLocaleString();
 }
 
+function toDatetimeLocalValue(ms: number): string {
+  const d = new Date(ms);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function fromDatetimeLocalValue(value: string): number | null {
+  if (!value) return null;
+  const ms = new Date(value).getTime();
+  return Number.isFinite(ms) ? ms : null;
+}
+
 async function refreshHistory() {
   const entries = await window.api.listEntries();
   historyListEl.innerHTML = '';
@@ -92,7 +105,7 @@ async function refreshHistory() {
     const row = document.createElement('div');
     row.className = 'entry-row';
 
-    const durationHours = entry.ended_at ? (entry.ended_at - entry.started_at) / 3600000 : 0;
+    let durationHours = entry.ended_at ? (entry.ended_at - entry.started_at) / 3600000 : 0;
     const earnings = entry.hourly_rate ? durationHours * entry.hourly_rate : 0;
 
     const top = document.createElement('div');
@@ -102,8 +115,70 @@ async function refreshHistory() {
 
     const meta = document.createElement('div');
     meta.className = 'entry-meta';
-    meta.textContent = `${formatDateTime(entry.started_at)}${entry.ended_at ? ' – ' + formatDateTime(entry.ended_at) : ''}${entry.note ? ' · ' + entry.note : ''}`;
+    meta.textContent = entry.note ?? '';
     row.appendChild(meta);
+
+    const statusEl = document.createElement('div');
+    statusEl.className = 'entry-save-status';
+
+    const earningsSpan = document.createElement('span');
+    earningsSpan.className = 'entry-earnings';
+    earningsSpan.textContent = formatMoney(earnings);
+
+    if (entry.ended_at !== null) {
+      const timeRow = document.createElement('div');
+      timeRow.className = 'entry-time-row';
+
+      const startLabel = document.createElement('label');
+      startLabel.textContent = 'Start';
+      const startInput = document.createElement('input');
+      startInput.type = 'datetime-local';
+      startInput.value = toDatetimeLocalValue(entry.started_at);
+
+      const stopLabel = document.createElement('label');
+      stopLabel.textContent = 'Stop';
+      const stopInput = document.createElement('input');
+      stopInput.type = 'datetime-local';
+      stopInput.value = toDatetimeLocalValue(entry.ended_at);
+
+      const saveTimes = () => {
+        const existing = entryTimeSaveHandles.get(entry.id);
+        if (existing) clearTimeout(existing);
+        const handle = window.setTimeout(async () => {
+          const newStart = fromDatetimeLocalValue(startInput.value);
+          const newEnd = fromDatetimeLocalValue(stopInput.value);
+          if (newStart === null || newEnd === null || newEnd <= newStart) {
+            statusEl.textContent = 'Stop must be after start.';
+            statusEl.style.color = '#d1242f';
+            return;
+          }
+          await window.api.updateEntryTimes(entry.id, newStart, newEnd);
+          durationHours = (newEnd - newStart) / 3600000;
+          top.querySelector('span:last-child')!.textContent = formatDuration(newEnd - newStart);
+          const rate = entry.hourly_rate ?? 0;
+          earningsSpan.textContent = formatMoney(durationHours * rate);
+          statusEl.textContent = 'Saved.';
+          statusEl.style.color = '#1a7f37';
+          await refreshEarnings();
+          await refreshSummary();
+        }, 500);
+        entryTimeSaveHandles.set(entry.id, handle);
+      };
+
+      startInput.addEventListener('input', saveTimes);
+      stopInput.addEventListener('input', saveTimes);
+
+      timeRow.appendChild(startLabel);
+      timeRow.appendChild(startInput);
+      timeRow.appendChild(stopLabel);
+      timeRow.appendChild(stopInput);
+      row.appendChild(timeRow);
+    } else {
+      const runningNote = document.createElement('div');
+      runningNote.className = 'entry-meta';
+      runningNote.textContent = `Started ${formatDateTime(entry.started_at)} · still running`;
+      row.appendChild(runningNote);
+    }
 
     const rateRow = document.createElement('div');
     rateRow.className = 'entry-rate-row';
@@ -115,9 +190,6 @@ async function refreshHistory() {
     input.step = '0.01';
     input.placeholder = '0.00';
     input.value = entry.hourly_rate != null ? String(entry.hourly_rate) : '';
-    const earningsSpan = document.createElement('span');
-    earningsSpan.className = 'entry-earnings';
-    earningsSpan.textContent = formatMoney(earnings);
 
     input.addEventListener('input', () => {
       const existing = entryRateSaveHandles.get(entry.id);
@@ -137,6 +209,7 @@ async function refreshHistory() {
     rateRow.appendChild(input);
     rateRow.appendChild(earningsSpan);
     row.appendChild(rateRow);
+    row.appendChild(statusEl);
 
     historyListEl.appendChild(row);
   }

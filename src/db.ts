@@ -97,6 +97,10 @@ export function updateEntryRate(entryId: number, hourlyRate: number | null): voi
   db.prepare('UPDATE entries SET hourly_rate = ? WHERE id = ?').run(hourlyRate, entryId);
 }
 
+export function updateEntryTimes(entryId: number, startedAt: number, endedAt: number | null): void {
+  db.prepare('UPDATE entries SET started_at = ?, ended_at = ? WHERE id = ?').run(startedAt, endedAt, entryId);
+}
+
 export function stopActiveEntry(): void {
   const active = getActiveEntry();
   if (!active) return;
