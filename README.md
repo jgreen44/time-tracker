@@ -9,8 +9,9 @@ A super simple Mac menu bar app for tracking time when developing software — b
 - Optional note per time entry, editable while the timer is running
 - Local SQLite storage — your data stays on your machine
 - Per-project hourly rate, locked into each entry at start time so changing a project's rate never rewrites past earnings
-- Live earnings totals for today, this week, and all time
+- Live earnings totals for today, this week, and all time — filterable by project or across all projects
 - "Today" summary of time tracked per project
+- Light and dark themes with a one-click toggle (choice is remembered)
 - "Edit Past Entries" view to correct a past entry's rate or start/stop time (e.g. to backfill time tracked before a rate was set)
 - Export all tracked time to an Excel (`.xlsx`) file, with separate local date/time columns for start and stop
 - Single-instance lock — launching the app while it's already running won't create a duplicate

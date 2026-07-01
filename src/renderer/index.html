@@ -4,117 +4,316 @@
   <meta charset="UTF-8" />
   <title>Time Tracker</title>
   <style>
+    :root {
+      --bg: #1a1c22;
+      --surface: #23262e;
+      --surface-2: #2b2f39;
+      --border: #383d49;
+      --text: #eef0f3;
+      --text-muted: #9297a3;
+      --accent: #6366f1;
+      --accent-hover: #7577f3;
+      --success: #22c55e;
+      --success-strong: #08210f;
+      --danger: #ef4444;
+      --radius: 10px;
+      --radius-sm: 7px;
+    }
+
+    [data-theme="light"] {
+      --bg: #eef2fb;
+      --surface: #ffffff;
+      --surface-2: #f3f6fc;
+      --border: #dbe3f3;
+      --text: #1b2333;
+      --text-muted: #6b7590;
+      --accent: #3b5bfd;
+      --accent-hover: #2c4bf0;
+      --success: #16a34a;
+      --success-strong: #eafff1;
+      --danger: #dc2626;
+    }
+
+    * { box-sizing: border-box; }
+
     body {
       margin: 0;
-      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
       font-size: 13px;
-      background: #f5f5f5;
-      color: #1d1d1f;
+      background: var(--bg);
+      color: var(--text);
+      -webkit-font-smoothing: antialiased;
+      transition: background 0.15s ease, color 0.15s ease;
     }
-    .container { padding: 12px; }
-    select, button, input[type="text"], input[type="number"], input[type="datetime-local"] {
-      width: 100%;
-      padding: 6px;
-      font-size: 13px;
-      margin-bottom: 8px;
-      box-sizing: border-box;
-      font-family: inherit;
-    }
-    .rate-row {
+
+    .container { padding: 16px; }
+
+    .app-header {
       display: flex;
       align-items: center;
-      gap: 6px;
-      margin-bottom: 8px;
+      justify-content: space-between;
+      margin-bottom: 14px;
     }
-    .rate-row label { font-size: 12px; color: #666; white-space: nowrap; }
-    .rate-row input { margin-bottom: 0; }
-    #elapsed {
-      font-size: 22px;
+    .app-header h1 {
+      font-size: 13px;
       font-weight: 600;
+      letter-spacing: 0.02em;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      margin: 0;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px;
+      margin-bottom: 12px;
+    }
+
+    label {
+      display: block;
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+    }
+
+    select, input[type="text"], input[type="number"], input[type="datetime-local"] {
+      width: 100%;
+      padding: 8px 10px;
+      font-size: 13px;
+      box-sizing: border-box;
+      font-family: inherit;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text);
+      outline: none;
+      transition: border-color 0.15s ease;
+    }
+    select:focus, input:focus {
+      border-color: var(--accent);
+    }
+    select { appearance: none; }
+
+    .field { margin-bottom: 10px; }
+    .field:last-child { margin-bottom: 0; }
+    .field-row {
+      display: grid;
+      grid-template-columns: 1fr 90px;
+      gap: 8px;
+      align-items: end;
+    }
+
+    button {
+      width: 100%;
+      padding: 9px 10px;
+      font-size: 13px;
+      font-weight: 600;
+      font-family: inherit;
+      border-radius: var(--radius-sm);
+      border: 1px solid transparent;
+      cursor: pointer;
+      transition: filter 0.15s ease, background 0.15s ease;
+    }
+    button:hover { filter: brightness(1.08); }
+    button:active { filter: brightness(0.95); }
+
+    .btn-primary { background: var(--accent); color: white; }
+    .btn-primary:hover { background: var(--accent-hover); }
+    .btn-secondary {
+      background: var(--surface-2);
+      color: var(--text);
+      border-color: var(--border);
+    }
+    .btn-danger { background: var(--danger); color: white; }
+    .btn-ghost {
+      background: transparent;
+      color: var(--text-muted);
+      border-color: var(--border);
+    }
+
+    .btn-row { display: flex; gap: 8px; margin-top: 8px; }
+    .btn-row button { margin: 0; }
+
+    .timer-block {
       text-align: center;
-      margin: 8px 0;
+      padding: 18px 0 14px;
+    }
+    #elapsed {
+      font-size: 34px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 0.02em;
+      line-height: 1;
     }
     #currentEarnings {
       font-size: 15px;
       font-weight: 600;
-      text-align: center;
-      color: #1a7f37;
-      margin-bottom: 8px;
+      color: var(--success);
+      margin-top: 6px;
     }
-    #startStop.running { background: #ff3b30; color: white; }
-    #startStop.stopped { background: #34c759; color: white; }
-    h3 { margin: 12px 0 4px; font-size: 12px; color: #666; text-transform: uppercase; }
-    .summary-row { display: flex; justify-content: space-between; padding: 2px 0; }
-    #addProjectBtn, #exportBtn, #historyBtn, #backBtn { background: #eee; }
-    #exportStatus { font-size: 11px; color: #666; text-align: center; min-height: 14px; }
+
+    #startStop.stopped { background: var(--success); color: var(--success-strong); }
+    #startStop.running { background: var(--danger); color: white; }
+
+    .theme-toggle {
+      width: auto;
+      padding: 6px 10px;
+      font-size: 15px;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      line-height: 1;
+    }
+
+    h3 {
+      margin: 0 0 8px;
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .summary-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 5px 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 13px;
+    }
+    .summary-row:last-child { border-bottom: none; }
+    .summary-row .value { font-weight: 600; font-variant-numeric: tabular-nums; }
+    .summary-row .value.money { color: var(--success); }
+
+    #exportStatus {
+      font-size: 11px;
+      color: var(--text-muted);
+      text-align: center;
+      min-height: 14px;
+      margin-top: 8px;
+    }
+
     #historyView { display: none; }
-    #historyList { max-height: 440px; overflow-y: auto; }
+    #historyList { max-height: 460px; overflow-y: auto; }
+
     .entry-row {
-      border-bottom: 1px solid #ddd;
-      padding: 6px 0;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px;
+      margin-bottom: 8px;
     }
     .entry-row .entry-top {
       display: flex;
       justify-content: space-between;
+      align-items: baseline;
       font-weight: 600;
-    }
-    .entry-row .entry-meta {
-      color: #666;
-      font-size: 11px;
-      margin: 2px 0;
-    }
-    .entry-row .field-group {
-      margin: 6px 0;
-    }
-    .entry-row .field-group label {
-      display: block;
-      font-size: 11px;
-      color: #666;
       margin-bottom: 2px;
     }
-    .entry-row .field-group input {
-      width: 100%;
-      margin-bottom: 0;
-      padding: 5px;
-      font-size: 12px;
-      box-sizing: border-box;
+    .entry-row .entry-top .duration { font-variant-numeric: tabular-nums; color: var(--text-muted); font-weight: 500; font-size: 12px; }
+    .entry-row .entry-meta {
+      color: var(--text-muted);
+      font-size: 11px;
+      margin-bottom: 8px;
     }
+    .entry-row .field-group { margin: 8px 0; }
+    .entry-row .field-group label { font-size: 10px; }
+    .entry-row .field-group input { padding: 6px 8px; font-size: 12px; }
     .entry-row .entry-earnings {
       display: block;
-      font-size: 11px;
-      color: #1a7f37;
-      margin-top: 4px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--success);
+      margin-top: 6px;
     }
-    .entry-row .entry-save-status { font-size: 10px; color: #1a7f37; min-height: 12px; margin-top: 4px; }
+    .entry-row .entry-save-status { font-size: 10px; color: var(--success); min-height: 12px; margin-top: 4px; }
+
+    ::-webkit-scrollbar { width: 8px; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+    .app-footer {
+      text-align: center;
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 16px;
+      padding-top: 12px;
+      border-top: 1px solid var(--border);
+    }
+    .app-footer a {
+      color: var(--accent);
+      text-decoration: none;
+      cursor: pointer;
+    }
+    .app-footer a:hover { text-decoration: underline; }
   </style>
 </head>
 <body>
   <div class="container" id="mainView">
-    <select id="projectSelect"></select>
-    <button id="addProjectBtn">+ Add Project</button>
-    <div class="rate-row">
-      <label for="rateInput">$/hr</label>
-      <input type="number" id="rateInput" min="0" step="0.01" placeholder="0.00" />
+    <div class="app-header">
+      <h1>Time Tracker</h1>
+      <button id="themeToggle" class="theme-toggle" title="Toggle theme">🌙</button>
     </div>
-    <input type="text" id="noteInput" placeholder="What are you working on? (optional)" />
-    <div id="elapsed">00:00:00</div>
-    <div id="currentEarnings">$0.00</div>
+
+    <div class="card">
+      <div class="field">
+        <label for="projectSelect">Project</label>
+        <div class="field-row">
+          <select id="projectSelect"></select>
+          <input type="number" id="rateInput" min="0" step="0.01" placeholder="$/hr" />
+        </div>
+      </div>
+      <div class="field">
+        <input type="text" id="noteInput" placeholder="What are you working on? (optional)" />
+      </div>
+      <button id="addProjectBtn" class="btn-ghost">+ Add Project</button>
+    </div>
+
+    <div class="card timer-block">
+      <div id="elapsed">00:00:00</div>
+      <div id="currentEarnings">$0.00</div>
+    </div>
+
     <button id="startStop" class="stopped">Start</button>
-    <h3>Today</h3>
-    <div id="summary"></div>
-    <h3>Earnings</h3>
-    <div class="summary-row"><span>Today</span><span id="earningsToday">$0.00</span></div>
-    <div class="summary-row"><span>This week</span><span id="earningsWeek">$0.00</span></div>
-    <div class="summary-row"><span>All time</span><span id="earningsAllTime">$0.00</span></div>
-    <button id="historyBtn">Edit Past Entries</button>
-    <button id="exportBtn">Export to Excel</button>
+
+    <div class="card" style="margin-top: 12px;">
+      <h3>Today</h3>
+      <div id="summary"></div>
+    </div>
+
+    <div class="card">
+      <div class="field">
+        <label for="earningsProjectSelect">Earnings for</label>
+        <select id="earningsProjectSelect">
+          <option value="">All Projects</option>
+        </select>
+      </div>
+      <div class="summary-row"><span>Today</span><span class="value money" id="earningsToday">$0.00</span></div>
+      <div class="summary-row"><span>This week</span><span class="value money" id="earningsWeek">$0.00</span></div>
+      <div class="summary-row"><span>All time</span><span class="value money" id="earningsAllTime">$0.00</span></div>
+    </div>
+
+    <div class="btn-row">
+      <button id="historyBtn" class="btn-secondary">Edit Past Entries</button>
+      <button id="exportBtn" class="btn-secondary">Export to Excel</button>
+    </div>
     <div id="exportStatus"></div>
+
+    <div class="app-footer">
+      &copy; <span id="copyrightYear"></span> <a href="#" id="authorLink">Jason Green</a>
+    </div>
   </div>
+
   <div class="container" id="historyView">
-    <button id="backBtn">&larr; Back</button>
-    <h3>Past Entries</h3>
+    <div class="app-header">
+      <h1>Past Entries</h1>
+    </div>
+    <button id="backBtn" class="btn-ghost" style="margin-bottom: 12px;">&larr; Back</button>
     <div id="historyList"></div>
   </div>
+
   <script src="renderer.js"></script>
 </body>
 </html>

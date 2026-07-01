@@ -26,8 +26,9 @@ interface TimeTrackerApi {
   >;
   getTodaySummary(): Promise<{ project_id: number; project_name: string; total_ms: number }[]>;
   exportExcel(): Promise<string | null>;
-  getEarningsSummary(): Promise<{ today: number; week: number; allTime: number }>;
+  getEarningsSummary(projectId?: number | null): Promise<{ today: number; week: number; allTime: number }>;
   updateProjectRate(projectId: number, hourlyRate: number | null): Promise<void>;
+  openExternal(url: string): Promise<void>;
 }
 
 interface Window {

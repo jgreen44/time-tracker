@@ -14,7 +14,8 @@ contextBridge.exposeInMainWorld('api', {
   listEntries: () => ipcRenderer.invoke('entries:list'),
   getTodaySummary: () => ipcRenderer.invoke('entries:todaySummary'),
   exportExcel: () => ipcRenderer.invoke('entries:exportExcel'),
-  getEarningsSummary: () => ipcRenderer.invoke('entries:earningsSummary'),
+  getEarningsSummary: (projectId: number | null) => ipcRenderer.invoke('entries:earningsSummary', projectId),
   updateProjectRate: (projectId: number, hourlyRate: number | null) =>
     ipcRenderer.invoke('projects:updateRate', projectId, hourlyRate),
+  openExternal: (url: string) => ipcRenderer.invoke('app:openExternal', url),
 });

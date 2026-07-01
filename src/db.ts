@@ -143,15 +143,23 @@ export interface EarningsSummary {
   allTime: number;
 }
 
-function earningsSince(sinceMs: number | null): number {
+function earningsSince(sinceMs: number | null, projectId: number | null): number {
   const now = Date.now();
+  const conditions: string[] = [];
+  const params: number[] = [];
+  if (sinceMs !== null) {
+    conditions.push('(started_at >= ? OR ended_at IS NULL)');
+    params.push(sinceMs);
+  }
+  if (projectId !== null) {
+    conditions.push('project_id = ?');
+    params.push(projectId);
+  }
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
   const rows = db
-    .prepare(
-      sinceMs === null
-        ? `SELECT started_at, ended_at, hourly_rate FROM entries`
-        : `SELECT started_at, ended_at, hourly_rate FROM entries WHERE started_at >= ? OR ended_at IS NULL`
-    )
-    .all(...(sinceMs === null ? [] : [sinceMs])) as {
+    .prepare(`SELECT started_at, ended_at, hourly_rate FROM entries ${where}`)
+    .all(...params) as {
     started_at: number;
     ended_at: number | null;
     hourly_rate: number | null;
@@ -169,7 +177,7 @@ function earningsSince(sinceMs: number | null): number {
   return total;
 }
 
-export function getEarningsSummary(): EarningsSummary {
+export function getEarningsSummary(projectId: number | null = null): EarningsSummary {
   const startOfDay = new Date();
   startOfDay.setHours(0, 0, 0, 0);
 
@@ -177,9 +185,9 @@ export function getEarningsSummary(): EarningsSummary {
   startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay());
 
   return {
-    today: earningsSince(startOfDay.getTime()),
-    week: earningsSince(startOfWeek.getTime()),
-    allTime: earningsSince(null),
+    today: earningsSince(startOfDay.getTime(), projectId),
+    week: earningsSince(startOfWeek.getTime(), projectId),
+    allTime: earningsSince(null, projectId),
   };
 }
 

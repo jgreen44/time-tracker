@@ -16,6 +16,38 @@ const backBtn = document.getElementById('backBtn') as HTMLButtonElement;
 const mainView = document.getElementById('mainView') as HTMLDivElement;
 const historyView = document.getElementById('historyView') as HTMLDivElement;
 const historyListEl = document.getElementById('historyList') as HTMLDivElement;
+const earningsProjectSelect = document.getElementById('earningsProjectSelect') as HTMLSelectElement;
+const themeToggle = document.getElementById('themeToggle') as HTMLButtonElement;
+
+const THEME_STORAGE_KEY = 'time-tracker-theme';
+
+function applyTheme(theme: 'dark' | 'light') {
+  document.documentElement.setAttribute('data-theme', theme);
+  themeToggle.textContent = theme === 'dark' ? '🌙' : '☀️';
+}
+
+function initTheme() {
+  const stored = localStorage.getItem(THEME_STORAGE_KEY);
+  const theme = stored === 'light' ? 'light' : 'dark';
+  applyTheme(theme);
+}
+
+themeToggle.addEventListener('click', () => {
+  const current = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+  const next = current === 'light' ? 'dark' : 'light';
+  localStorage.setItem(THEME_STORAGE_KEY, next);
+  applyTheme(next);
+});
+
+initTheme();
+
+const copyrightYearEl = document.getElementById('copyrightYear') as HTMLSpanElement;
+const authorLink = document.getElementById('authorLink') as HTMLAnchorElement;
+copyrightYearEl.textContent = String(new Date().getFullYear());
+authorLink.addEventListener('click', (e) => {
+  e.preventDefault();
+  window.api.openExternal('https://www.clearedfinal.com');
+});
 
 let activeEntry: Awaited<ReturnType<typeof window.api.getActiveEntry>> = null;
 let projects: Awaited<ReturnType<typeof window.api.listProjects>> = [];
@@ -54,6 +86,16 @@ async function refreshProjects() {
     projectSelect.value = String(activeEntry.project_id);
   }
   rateInput.value = currentProject()?.hourly_rate != null ? String(currentProject()!.hourly_rate) : '';
+
+  const previousEarningsSelection = earningsProjectSelect.value;
+  earningsProjectSelect.innerHTML = '<option value="">All Projects</option>';
+  for (const project of projects) {
+    const option = document.createElement('option');
+    option.value = String(project.id);
+    option.textContent = project.name;
+    earningsProjectSelect.appendChild(option);
+  }
+  earningsProjectSelect.value = previousEarningsSelection;
 }
 
 async function refreshSummary() {
@@ -66,17 +108,23 @@ async function refreshSummary() {
   for (const row of summary) {
     const div = document.createElement('div');
     div.className = 'summary-row';
-    div.innerHTML = `<span>${row.project_name}</span><span>${formatDuration(row.total_ms)}</span>`;
+    div.innerHTML = `<span>${row.project_name}</span><span class="value">${formatDuration(row.total_ms)}</span>`;
     summaryEl.appendChild(div);
   }
 }
 
 async function refreshEarnings() {
-  const earnings = await window.api.getEarningsSummary();
+  const selected = earningsProjectSelect.value;
+  const projectId = selected === '' ? null : Number(selected);
+  const earnings = await window.api.getEarningsSummary(projectId);
   earningsTodayEl.textContent = formatMoney(earnings.today);
   earningsWeekEl.textContent = formatMoney(earnings.week);
   earningsAllTimeEl.textContent = formatMoney(earnings.allTime);
 }
+
+earningsProjectSelect.addEventListener('change', () => {
+  refreshEarnings();
+});
 
 function formatDateTime(ms: number): string {
   return new Date(ms).toLocaleString();

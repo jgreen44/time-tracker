@@ -1,6 +1,6 @@
 import path from 'path';
 import { execFile } from 'child_process';
-import { app, dialog, ipcMain, Menu } from 'electron';
+import { app, dialog, ipcMain, Menu, shell } from 'electron';
 import { menubar } from 'menubar';
 import ExcelJS from 'exceljs';
 import * as db from './db';
@@ -15,8 +15,8 @@ const mb = menubar({
   icon: path.join(__dirname, '..', 'assets', 'iconTemplate.png'),
   preloadWindow: true,
   browserWindow: {
-    width: 320,
-    height: 560,
+    width: 340,
+    height: 600,
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
@@ -81,10 +81,15 @@ ipcMain.handle('entries:updateTimes', (_event, entryId: number, startedAt: numbe
 );
 ipcMain.handle('entries:list', () => db.listAllEntries());
 ipcMain.handle('entries:todaySummary', () => db.getTodaySummary());
-ipcMain.handle('entries:earningsSummary', () => db.getEarningsSummary());
+ipcMain.handle('entries:earningsSummary', (_event, projectId: number | null) => db.getEarningsSummary(projectId));
 ipcMain.handle('projects:updateRate', (_event, projectId: number, hourlyRate: number | null) =>
   db.updateProjectRate(projectId, hourlyRate)
 );
+ipcMain.handle('app:openExternal', (_event, url: string) => {
+  if (url === 'https://www.clearedfinal.com') {
+    shell.openExternal(url);
+  }
+});
 
 function formatLocalDate(ms: number): string {
   return new Date(ms).toLocaleDateString();
