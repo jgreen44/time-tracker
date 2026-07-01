@@ -11,8 +11,11 @@ const currentEarningsEl = document.getElementById('currentEarnings') as HTMLDivE
 const earningsTodayEl = document.getElementById('earningsToday') as HTMLSpanElement;
 const earningsWeekEl = document.getElementById('earningsWeek') as HTMLSpanElement;
 const earningsAllTimeEl = document.getElementById('earningsAllTime') as HTMLSpanElement;
-const historyBtn = document.getElementById('historyBtn') as HTMLButtonElement;
-const backBtn = document.getElementById('backBtn') as HTMLButtonElement;
+const tabTimer = document.getElementById('tabTimer') as HTMLButtonElement;
+const tabHistory = document.getElementById('tabHistory') as HTMLButtonElement;
+const tabTimer2 = document.getElementById('tabTimer2') as HTMLButtonElement;
+const tabHistory2 = document.getElementById('tabHistory2') as HTMLButtonElement;
+const startStopLabel = document.getElementById('startStopLabel') as HTMLSpanElement;
 const mainView = document.getElementById('mainView') as HTMLDivElement;
 const historyView = document.getElementById('historyView') as HTMLDivElement;
 const historyListEl = document.getElementById('historyList') as HTMLDivElement;
@@ -377,11 +380,25 @@ loadMoreBtn.addEventListener('click', async () => {
   loadMoreBtn.style.display = historyOffset < historyTotalCount ? 'block' : 'none';
 });
 
-historyBtn.addEventListener('click', async () => {
+async function showHistoryView() {
   mainView.style.display = 'none';
   historyView.style.display = 'block';
+  [tabTimer, tabTimer2].forEach((t) => t.classList.remove('active'));
+  [tabHistory, tabHistory2].forEach((t) => t.classList.add('active'));
   await refreshHistory();
-});
+}
+
+function showTimerView() {
+  historyView.style.display = 'none';
+  mainView.style.display = 'block';
+  [tabHistory, tabHistory2].forEach((t) => t.classList.remove('active'));
+  [tabTimer, tabTimer2].forEach((t) => t.classList.add('active'));
+}
+
+tabTimer.addEventListener('click', showTimerView);
+tabTimer2.addEventListener('click', showTimerView);
+tabHistory.addEventListener('click', showHistoryView);
+tabHistory2.addEventListener('click', showHistoryView);
 
 function resetAddEntryForm() {
   addEntryForm.style.display = 'none';
@@ -435,10 +452,6 @@ addEntrySaveBtn.addEventListener('click', async () => {
   await refreshSummary();
 });
 
-backBtn.addEventListener('click', () => {
-  historyView.style.display = 'none';
-  mainView.style.display = 'block';
-});
 
 function tick() {
   if (!activeEntry) {
@@ -453,7 +466,7 @@ function tick() {
 }
 
 function setRunningUi(running: boolean) {
-  startStopBtn.textContent = running ? 'Stop' : 'Start';
+  startStopLabel.textContent = running ? 'Stop' : 'Start';
   startStopBtn.className = running ? 'running' : 'stopped';
   projectSelect.disabled = running;
 }
