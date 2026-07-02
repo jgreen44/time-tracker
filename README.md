@@ -2,6 +2,15 @@
 
 A super simple Mac menu bar app for tracking time when developing software — built for people working independently or who just need a lightweight way to track time.
 
+## Screenshots
+
+| Dark | Light |
+| --- | --- |
+| ![Timer view, dark theme](docs/screenshots/timer-dark.png) | ![Timer view, light theme](docs/screenshots/timer-light.png) |
+| ![History view, dark theme](docs/screenshots/history-dark.png) | ![History view, light theme](docs/screenshots/history-light.png) |
+
+*Shown with sample data for illustration.*
+
 ## Features
 
 - Lives in the Mac menu bar — start and stop a timer without leaving your editor
