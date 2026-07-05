@@ -17,9 +17,27 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('entries:createManual', projectId, startedAt, endedAt, note, hourlyRate),
   deleteEntry: (entryId: number) => ipcRenderer.invoke('entries:delete', entryId),
   getTodaySummary: () => ipcRenderer.invoke('entries:todaySummary'),
-  exportExcel: () => ipcRenderer.invoke('entries:exportExcel'),
+  getLastExportRange: () => ipcRenderer.invoke('entries:getLastExportRange'),
+  exportExcel: (params: { rangeFrom: number; rangeTo: number; projectId?: number | null }) =>
+    ipcRenderer.invoke('entries:exportExcel', params),
   getEarningsSummary: (projectId: number | null) => ipcRenderer.invoke('entries:earningsSummary', projectId),
   updateProjectRate: (projectId: number, hourlyRate: number | null) =>
     ipcRenderer.invoke('projects:updateRate', projectId, hourlyRate),
   openExternal: (url: string) => ipcRenderer.invoke('app:openExternal', url),
+  getInvoiceSettings: () => ipcRenderer.invoke('invoice:getSettings'),
+  saveInvoiceSettings: (settings: {
+    your_name?: string; your_company?: string; your_address?: string;
+    your_email?: string; your_phone?: string;
+    preferred_template_id?: number; default_payment_terms?: string;
+    last_client_name?: string; last_client_address?: string;
+    last_due_date?: string; last_notes?: string; last_project_id?: number | null;
+  }) => ipcRenderer.invoke('invoice:saveSettings', settings),
+  getNextInvoiceNumber: () => ipcRenderer.invoke('invoice:getNextNumber'),
+  previewInvoiceTemplate: (templateId: number, formData?: object) => ipcRenderer.invoke('invoice:preview', templateId, formData),
+  refreshInvoicePreview: (params: object) => ipcRenderer.invoke('invoice:refreshPreview', params),
+  exportInvoice: (params: {
+    templateId: number; invoiceNumber: string; dueDate: string;
+    paymentTerms: string; clientName: string; clientAddress: string;
+    notes: string; rangeFrom: number; rangeTo: number; projectId: number | null;
+  }) => ipcRenderer.invoke('invoice:export', params),
 });

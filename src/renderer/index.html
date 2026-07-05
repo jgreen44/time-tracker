@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <title>Time Tracker</title>
+  <link rel="stylesheet" href="flatpickr.min.css" />
   <style>
     :root {
       --bg: #1a1c22;
@@ -44,6 +45,7 @@
       color: var(--text);
       -webkit-font-smoothing: antialiased;
       transition: background 0.15s ease, color 0.15s ease;
+      overflow-y: auto;
     }
 
     .container { padding: 16px; }
@@ -52,7 +54,7 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      margin-bottom: 14px;
+      margin-bottom: 10px;
     }
     .app-header h1 {
       font-size: 13px;
@@ -67,8 +69,8 @@
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: var(--radius);
-      padding: 14px;
-      margin-bottom: 12px;
+      padding: 12px 14px;
+      margin-bottom: 10px;
     }
 
     label {
@@ -79,7 +81,7 @@
       margin-bottom: 4px;
     }
 
-    select, input[type="text"], input[type="number"], input[type="datetime-local"] {
+    select, input[type="text"], input[type="number"], input[type="datetime-local"], input[type="date"] {
       width: 100%;
       padding: 8px 10px;
       font-size: 13px;
@@ -96,6 +98,39 @@
       border-color: var(--accent);
     }
     select { appearance: none; }
+    /* ── flatpickr dark theme overrides ───────────────────────────────────── */
+    .flatpickr-calendar {
+      background: #2a2d36;
+      border: 1px solid #3a3d46;
+      border-radius: 8px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+      color: #e0e0e0;
+    }
+    .flatpickr-calendar.arrowTop::before, .flatpickr-calendar.arrowTop::after { border-bottom-color: #2a2d36; }
+    .flatpickr-months { padding: 6px 0 2px; }
+    .flatpickr-months .flatpickr-month,
+    .flatpickr-months .flatpickr-prev-month,
+    .flatpickr-months .flatpickr-next-month { color: #e0e0e0; fill: #e0e0e0; }
+    .flatpickr-months .flatpickr-prev-month:hover, .flatpickr-months .flatpickr-next-month:hover { color: #fff; }
+    .flatpickr-current-month { color: #e0e0e0; }
+    .flatpickr-current-month .cur-month,
+    .flatpickr-current-month input.cur-year { color: #e0e0e0; }
+    .flatpickr-weekdays { background: transparent; }
+    span.flatpickr-weekday { color: #888; background: transparent; }
+    .flatpickr-day { color: #d0d0d0; border-radius: 6px; }
+    .flatpickr-day:hover { background: #3a3d46; border-color: transparent; }
+    .flatpickr-day.selected, .flatpickr-day.selected:hover {
+      background: var(--accent, #5b7fff);
+      border-color: var(--accent, #5b7fff);
+      color: #fff;
+    }
+    .flatpickr-day.today { border-color: var(--accent, #5b7fff); color: var(--accent, #5b7fff); }
+    .flatpickr-day.today.selected { color: #fff; }
+    .flatpickr-day.flatpickr-disabled, .flatpickr-day.flatpickr-disabled:hover { color: #555; }
+    .numInputWrapper:hover { background: transparent; }
+    .numInput { color: #e0e0e0 !important; background: transparent !important; }
+    .numInputWrapper span { border-color: #444; }
+    .numInputWrapper span:hover { background: #3a3d46; }
 
     .field { margin-bottom: 10px; }
     .field:last-child { margin-bottom: 0; }
@@ -112,7 +147,7 @@
       border: 1px solid var(--border);
       border-radius: var(--radius-sm);
       padding: 3px;
-      margin-bottom: 14px;
+      margin-bottom: 10px;
     }
     .tab-btn {
       flex: 1;
@@ -162,7 +197,7 @@
 
     .timer-block {
       text-align: center;
-      padding: 18px 0 14px;
+      padding: 12px 0 10px;
     }
     #elapsed {
       font-size: 34px;
@@ -333,6 +368,152 @@
     ::-webkit-scrollbar { width: 8px; }
     ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
 
+    /* ── Modals ────────────────────────────────────────────────────────── */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.55);
+      z-index: 200;
+      overflow-y: auto;
+      display: none;
+    }
+    .modal-overlay.open { display: block; }
+
+    .modal-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      margin: 14px;
+      padding: 16px;
+    }
+
+    .modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 14px;
+    }
+    .modal-header h2 {
+      font-size: 13px;
+      font-weight: 700;
+      margin: 0;
+    }
+    .modal-close {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      font-size: 18px;
+      cursor: pointer;
+      padding: 0 4px;
+      width: auto;
+      line-height: 1;
+    }
+    .modal-close:hover { color: var(--text); filter: none; }
+
+    .modal-section {
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      margin: 14px 0 8px;
+    }
+    .modal-section:first-of-type { margin-top: 0; }
+
+    .modal-hint {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-bottom: 10px;
+      padding: 8px 10px;
+      background: var(--surface-2);
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+    }
+    .modal-hint strong { color: var(--accent); }
+
+    .field-2col {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    /* ── Template picker ───────────────────────────────────────────────── */
+    .template-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 4px;
+    }
+    .template-card {
+      border: 2px solid var(--border);
+      border-radius: var(--radius-sm);
+      overflow: hidden;
+      cursor: pointer;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+    .template-card:hover { border-color: var(--accent); }
+    .template-card.selected {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px rgba(99,102,241,0.2);
+    }
+    .template-preview {
+      height: 56px;
+      position: relative;
+      overflow: hidden;
+    }
+    .template-preview::after {
+      content: '👁 Preview';
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+      font-weight: 700;
+      color: white;
+      background: rgba(0,0,0,0.55);
+      opacity: 0;
+      transition: opacity 0.15s ease;
+    }
+    .template-card:hover .template-preview::after { opacity: 1; }
+    .tp-header {
+      height: 20px;
+      width: 100%;
+    }
+    .tp-body {
+      padding: 5px 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+    .tp-line {
+      height: 3px;
+      border-radius: 2px;
+      opacity: 0.35;
+    }
+    .tp-line.short { width: 55%; }
+    .tp-line.medium { width: 75%; }
+    .tp-line.full { width: 100%; }
+    .template-name {
+      font-size: 10px;
+      font-weight: 600;
+      text-align: center;
+      padding: 4px 4px 5px;
+      background: var(--surface-2);
+      border-top: 1px solid var(--border);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .modal-status {
+      font-size: 11px;
+      color: var(--text-muted);
+      text-align: center;
+      min-height: 14px;
+      margin-top: 8px;
+    }
+
     .app-footer {
       text-align: center;
       font-size: 11px;
@@ -404,7 +585,10 @@
       <div class="summary-row"><span>All time</span><span class="value money" id="earningsAllTime">$0.00</span></div>
     </div>
 
-    <button id="exportBtn" class="btn-secondary">Export to Excel</button>
+    <div class="btn-row" style="margin-top:0">
+      <button id="exportBtn" class="btn-secondary" style="margin:0">Export to Excel</button>
+      <button id="invoiceBtn" class="btn-secondary" style="margin:0">Export Invoice</button>
+    </div>
     <div id="exportStatus"></div>
 
     <div class="app-footer">
@@ -451,6 +635,139 @@
     <button id="loadMoreBtn" class="btn-secondary">Load More</button>
   </div>
 
+  <!-- ── Export Range Modal ───────────────────────────────────────────── -->
+  <div class="modal-overlay" id="exportModal">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h2>Export to Excel</h2>
+        <button class="modal-close" id="exportModalClose">✕</button>
+      </div>
+      <div id="exportLastHint" class="modal-hint" style="display:none">
+        Last exported through: <strong id="exportLastDate"></strong>
+      </div>
+      <div class="modal-section">Date Range</div>
+      <div class="field-2col field">
+        <div>
+          <label for="exportFromDate">From</label>
+          <input type="text" id="exportFromDate" placeholder="mm/dd/yyyy" readonly />
+        </div>
+        <div>
+          <label for="exportToDate">To</label>
+          <input type="text" id="exportToDate" placeholder="mm/dd/yyyy" readonly />
+        </div>
+      </div>
+      <div class="field">
+        <label for="exportProjectFilter">Project</label>
+        <select id="exportProjectFilter">
+          <option value="">All Projects</option>
+        </select>
+      </div>
+      <button id="exportConfirmBtn" class="btn-primary" style="margin-top:4px">Export to Excel</button>
+      <div class="modal-status" id="exportModalStatus"></div>
+    </div>
+  </div>
+
+  <!-- ── Invoice Modal ─────────────────────────────────────────────────── -->
+  <div class="modal-overlay" id="invoiceModal">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h2>Export Invoice (PDF)</h2>
+        <button class="modal-close" id="invoiceModalClose">✕</button>
+      </div>
+
+      <div class="modal-section">Template</div>
+      <div class="template-grid" id="templateGrid"></div>
+
+      <div class="modal-section">Invoice Details</div>
+      <div class="field-2col field">
+        <div>
+          <label for="invNumber">Invoice #</label>
+          <input type="text" id="invNumber" placeholder="INV-0001" />
+        </div>
+        <div>
+          <label for="invDueDate">Due Date</label>
+          <input type="text" id="invDueDate" placeholder="e.g. Aug 4, 2026" />
+        </div>
+      </div>
+      <div class="field">
+        <label for="invPaymentTerms">Payment Terms</label>
+        <select id="invPaymentTerms">
+          <option value="Due on Receipt">Due on Receipt</option>
+          <option value="Net 7">Net 7</option>
+          <option value="Net 14">Net 14</option>
+          <option value="Net 15">Net 15</option>
+          <option value="Net 30" selected>Net 30</option>
+          <option value="Net 45">Net 45</option>
+          <option value="Net 60">Net 60</option>
+          <option value="Net 90">Net 90</option>
+        </select>
+      </div>
+
+      <div class="modal-section">Your Info <span style="font-weight:400;color:var(--text-muted)">(saved)</span></div>
+      <div class="field-2col field">
+        <div>
+          <label for="invYourName">Your Name</label>
+          <input type="text" id="invYourName" />
+        </div>
+        <div>
+          <label for="invYourCompany">Company</label>
+          <input type="text" id="invYourCompany" />
+        </div>
+      </div>
+      <div class="field">
+        <label for="invYourAddress">Address</label>
+        <input type="text" id="invYourAddress" placeholder="City, State ZIP" />
+      </div>
+      <div class="field-2col field">
+        <div>
+          <label for="invYourEmail">Email</label>
+          <input type="text" id="invYourEmail" />
+        </div>
+        <div>
+          <label for="invYourPhone">Phone</label>
+          <input type="text" id="invYourPhone" />
+        </div>
+      </div>
+
+      <div class="modal-section">Client</div>
+      <div class="field">
+        <label for="invClientName">Client Name</label>
+        <input type="text" id="invClientName" />
+      </div>
+      <div class="field">
+        <label for="invClientAddress">Client Address</label>
+        <input type="text" id="invClientAddress" placeholder="City, State ZIP" />
+      </div>
+
+      <div class="modal-section">Date Range &amp; Project</div>
+      <div class="field-2col field">
+        <div>
+          <label for="invFromDate">From</label>
+          <input type="text" id="invFromDate" placeholder="mm/dd/yyyy" readonly />
+        </div>
+        <div>
+          <label for="invToDate">To</label>
+          <input type="text" id="invToDate" placeholder="mm/dd/yyyy" readonly />
+        </div>
+      </div>
+      <div class="field">
+        <label for="invProjectFilter">Project</label>
+        <select id="invProjectFilter">
+          <option value="">All Projects</option>
+        </select>
+      </div>
+
+      <div class="modal-section">Notes</div>
+      <div class="field">
+        <input type="text" id="invNotes" placeholder="Payment instructions, thank you note, etc." />
+      </div>
+
+      <button id="invoiceExportBtn" class="btn-primary" style="margin-top:4px">Export PDF</button>
+      <div class="modal-status" id="invoiceModalStatus"></div>
+    </div>
+  </div>
+
+  <script src="flatpickr.min.js"></script>
   <script src="renderer.js"></script>
 </body>
 </html>

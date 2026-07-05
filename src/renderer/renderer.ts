@@ -1,3 +1,23 @@
+// flatpickr is loaded as a UMD global via <script> in index.html (no require()).
+// Minimal ambient declaration for the subset of the API we actually call.
+interface FpInstance { setDate(d: Date, triggerChange: boolean): void; clear(): void; }
+interface FpOptions { dateFormat?: string; allowInput?: boolean; disableMobile?: boolean; }
+declare function flatpickr(el: HTMLInputElement, opts?: FpOptions): FpInstance;
+
+// ── Template preview data (mirrors invoice-templates.ts registry) ─────────────
+const TEMPLATE_META = [
+  { id: 1, name: 'Classic Minimal',    headerColor: '#1a1a1a', lineColor: '#1a1a1a', isDark: false },
+  { id: 2, name: 'Modern Gradient',    headerColor: 'linear-gradient(135deg,#1e3a8a,#6366f1)', lineColor: '#6366f1', isDark: false },
+  { id: 3, name: 'Itemized Detail',    headerColor: '#0f766e', lineColor: '#0f766e', isDark: false },
+  { id: 4, name: 'Executive Summary',  headerColor: '#7c3aed', lineColor: '#7c3aed', isDark: false },
+  { id: 5, name: 'Dark Tech',          headerColor: '#0d1117', lineColor: '#6366f1', isDark: true  },
+  { id: 6, name: 'Contractor Formal',  headerColor: '#78350f', lineColor: '#78350f', isDark: false },
+  { id: 7, name: 'Two-Column',         headerColor: '#1d4ed8', lineColor: '#1d4ed8', isDark: false },
+  { id: 8, name: 'Stripe-Inspired',    headerColor: '#635bff', lineColor: '#635bff', isDark: false },
+  { id: 9, name: 'Creative Color',     headerColor: 'linear-gradient(120deg,#059669,#34d399)', lineColor: '#059669', isDark: false },
+  { id: 10, name: 'Simple Text',       headerColor: '#f5f5f5', lineColor: '#555', isDark: false },
+];
+
 const projectSelect = document.getElementById('projectSelect') as HTMLSelectElement;
 const addProjectBtn = document.getElementById('addProjectBtn') as HTMLButtonElement;
 const startStopBtn = document.getElementById('startStop') as HTMLButtonElement;
@@ -32,6 +52,41 @@ const addEntryNote = document.getElementById('addEntryNote') as HTMLInputElement
 const addEntryStatus = document.getElementById('addEntryStatus') as HTMLDivElement;
 const addEntryCancelBtn = document.getElementById('addEntryCancelBtn') as HTMLButtonElement;
 const addEntrySaveBtn = document.getElementById('addEntrySaveBtn') as HTMLButtonElement;
+
+// ── Export modal elements ──────────────────────────────────────────────────────
+const exportModal = document.getElementById('exportModal') as HTMLDivElement;
+const exportModalClose = document.getElementById('exportModalClose') as HTMLButtonElement;
+const exportLastHint = document.getElementById('exportLastHint') as HTMLDivElement;
+const exportLastDateEl = document.getElementById('exportLastDate') as HTMLSpanElement;
+const exportFromDate = document.getElementById('exportFromDate') as HTMLInputElement;
+const exportToDate = document.getElementById('exportToDate') as HTMLInputElement;
+const exportProjectFilter = document.getElementById('exportProjectFilter') as HTMLSelectElement;
+const exportConfirmBtn = document.getElementById('exportConfirmBtn') as HTMLButtonElement;
+const exportModalStatus = document.getElementById('exportModalStatus') as HTMLDivElement;
+
+// ── Invoice modal elements ────────────────────────────────────────────────────
+const invoiceModal = document.getElementById('invoiceModal') as HTMLDivElement;
+const invoiceModalClose = document.getElementById('invoiceModalClose') as HTMLButtonElement;
+const templateGrid = document.getElementById('templateGrid') as HTMLDivElement;
+const invNumber = document.getElementById('invNumber') as HTMLInputElement;
+const invDueDate = document.getElementById('invDueDate') as HTMLInputElement;
+const invPaymentTerms = document.getElementById('invPaymentTerms') as HTMLSelectElement;
+const invYourName = document.getElementById('invYourName') as HTMLInputElement;
+const invYourCompany = document.getElementById('invYourCompany') as HTMLInputElement;
+const invYourAddress = document.getElementById('invYourAddress') as HTMLInputElement;
+const invYourEmail = document.getElementById('invYourEmail') as HTMLInputElement;
+const invYourPhone = document.getElementById('invYourPhone') as HTMLInputElement;
+const invClientName = document.getElementById('invClientName') as HTMLInputElement;
+const invClientAddress = document.getElementById('invClientAddress') as HTMLInputElement;
+const invFromDate = document.getElementById('invFromDate') as HTMLInputElement;
+const invToDate = document.getElementById('invToDate') as HTMLInputElement;
+const invProjectFilter = document.getElementById('invProjectFilter') as HTMLSelectElement;
+const invNotes = document.getElementById('invNotes') as HTMLInputElement;
+const invoiceExportBtn = document.getElementById('invoiceExportBtn') as HTMLButtonElement;
+const invoiceModalStatus = document.getElementById('invoiceModalStatus') as HTMLDivElement;
+const invoiceBtn = document.getElementById('invoiceBtn') as HTMLButtonElement;
+
+let selectedTemplateId = 1;
 
 const THEME_STORAGE_KEY = 'time-tracker-theme';
 
@@ -537,9 +592,350 @@ addProjectBtn.addEventListener('click', async () => {
 });
 
 exportBtn.addEventListener('click', async () => {
-  exportStatusEl.textContent = 'Exporting...';
-  const filePath = await window.api.exportExcel();
-  exportStatusEl.textContent = filePath ? `Saved to ${filePath}` : '';
+  await openExportModal();
+});
+
+invoiceBtn.addEventListener('click', async () => {
+  await openInvoiceModal();
+});
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function toDateInputValue(ms: number): string {
+  const d = new Date(ms);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+function dateInputToStartMs(val: string): number {
+  return new Date(val + 'T00:00:00').getTime();
+}
+
+function dateInputToEndMs(val: string): number {
+  return new Date(val + 'T23:59:59.999').getTime();
+}
+
+// ── Flatpickr date pickers ────────────────────────────────────────────────────
+// All four date inputs use the same config: calendar-only (no typing),
+// YYYY-MM-DD internal format so the existing helpers work unchanged.
+
+const fpConfig: FpOptions = {
+  dateFormat: 'Y-m-d',
+  allowInput: false,
+  disableMobile: true,
+};
+
+const fpExportFrom = flatpickr(exportFromDate, fpConfig);
+const fpExportTo   = flatpickr(exportToDate,   fpConfig);
+const fpInvFrom    = flatpickr(invFromDate,     fpConfig);
+const fpInvTo      = flatpickr(invToDate,       fpConfig);
+
+/** Set a flatpickr instance to a date without triggering the change event. */
+function setFpDate(fp: FpInstance, ms: number | null) {
+  if (ms === null) { fp.clear(); return; }
+  fp.setDate(new Date(ms), false);
+}
+
+function populateProjectDropdown(select: HTMLSelectElement) {
+  const prev = select.value;
+  select.innerHTML = '<option value="">All Projects</option>';
+  for (const p of projects) {
+    const opt = document.createElement('option');
+    opt.value = String(p.id);
+    opt.textContent = p.name;
+    select.appendChild(opt);
+  }
+  select.value = prev;
+}
+
+// ── Export modal ──────────────────────────────────────────────────────────────
+
+async function openExportModal() {
+  exportModalStatus.textContent = '';
+  populateProjectDropdown(exportProjectFilter);
+
+  const lastRange = await window.api.getLastExportRange();
+  if (lastRange) {
+    exportLastHint.style.display = 'block';
+    exportLastDateEl.textContent = new Date(lastRange.range_to).toLocaleDateString();
+    setFpDate(fpExportFrom, lastRange.range_to + 86_400_000); // day after last export
+  } else {
+    exportLastHint.style.display = 'none';
+    setFpDate(fpExportFrom, null);
+  }
+  setFpDate(fpExportTo, Date.now());
+
+  exportModal.classList.add('open');
+}
+
+exportModalClose.addEventListener('click', () => exportModal.classList.remove('open'));
+exportModal.addEventListener('click', (e) => {
+  if (e.target === exportModal) exportModal.classList.remove('open');
+});
+
+exportConfirmBtn.addEventListener('click', async () => {
+  if (!exportFromDate.value || !exportToDate.value) {
+    exportModalStatus.textContent = 'Please select both dates.';
+    exportModalStatus.style.color = 'var(--danger)';
+    return;
+  }
+  const rangeFrom = dateInputToStartMs(exportFromDate.value);
+  const rangeTo = dateInputToEndMs(exportToDate.value);
+  if (rangeTo < rangeFrom) {
+    exportModalStatus.textContent = '"To" must be after "From".';
+    exportModalStatus.style.color = 'var(--danger)';
+    return;
+  }
+  const projectId = exportProjectFilter.value ? Number(exportProjectFilter.value) : null;
+  exportConfirmBtn.disabled = true;
+  exportModalStatus.textContent = 'Exporting…';
+  exportModalStatus.style.color = 'var(--text-muted)';
+  try {
+    const filePath = await window.api.exportExcel({ rangeFrom, rangeTo, projectId });
+    if (filePath) {
+      exportModalStatus.textContent = `Saved to ${filePath}`;
+      exportModalStatus.style.color = 'var(--success)';
+      exportStatusEl.textContent = `Last export: ${new Date(rangeTo).toLocaleDateString()}`;
+    } else {
+      exportModalStatus.textContent = 'Export cancelled.';
+      exportModalStatus.style.color = 'var(--text-muted)';
+    }
+  } catch {
+    exportModalStatus.textContent = 'Export failed.';
+    exportModalStatus.style.color = 'var(--danger)';
+  }
+  exportConfirmBtn.disabled = false;
+});
+
+// ── Invoice modal ─────────────────────────────────────────────────────────────
+
+function buildTemplateGrid() {
+  templateGrid.innerHTML = '';
+  for (const t of TEMPLATE_META) {
+    const card = document.createElement('div');
+    card.className = 'template-card' + (t.id === selectedTemplateId ? ' selected' : '');
+    card.dataset.id = String(t.id);
+
+    const bgColor = t.isDark ? '#161b22' : '#fff';
+    const preview = document.createElement('div');
+    preview.className = 'template-preview';
+    preview.style.background = bgColor;
+    preview.innerHTML = `
+      <div class="tp-header" style="background:${t.headerColor}"></div>
+      <div class="tp-body">
+        <div class="tp-line short" style="background:${t.lineColor}"></div>
+        <div class="tp-line medium" style="background:${t.lineColor}"></div>
+        <div class="tp-line full" style="background:${t.lineColor}"></div>
+        <div class="tp-line medium" style="background:${t.lineColor}"></div>
+      </div>`;
+
+    const nameEl = document.createElement('div');
+    nameEl.className = 'template-name';
+    nameEl.textContent = t.name;
+
+    card.appendChild(preview);
+    card.appendChild(nameEl);
+    card.addEventListener('click', () => {
+      selectedTemplateId = t.id;
+      templateGrid.querySelectorAll('.template-card').forEach((c) => c.classList.remove('selected'));
+      card.classList.add('selected');
+      window.api.previewInvoiceTemplate(t.id, getInvoiceFormData());
+      // Persist the preferred template immediately
+      window.api.saveInvoiceSettings({ preferred_template_id: t.id });
+    });
+    templateGrid.appendChild(card);
+  }
+}
+
+async function openInvoiceModal() {
+  invoiceModalStatus.textContent = '';
+  populateProjectDropdown(invProjectFilter);
+  buildTemplateGrid();
+
+  const [settings, nextNum, lastRange] = await Promise.all([
+    window.api.getInvoiceSettings(),
+    window.api.getNextInvoiceNumber(),
+    window.api.getLastExportRange(),
+  ]);
+
+  invNumber.value = nextNum;
+  invYourName.value = settings.your_name ?? '';
+  invYourCompany.value = settings.your_company ?? '';
+  invYourAddress.value = settings.your_address ?? '';
+  invYourEmail.value = settings.your_email ?? '';
+  invYourPhone.value = settings.your_phone ?? '';
+
+  // Restore last-used template
+  selectedTemplateId = settings.preferred_template_id ?? 1;
+  buildTemplateGrid(); // re-render grid with correct selection highlighted
+
+  // Restore last-used payment terms
+  invPaymentTerms.value = settings.default_payment_terms ?? 'Net 30';
+
+  // Restore last-used client info
+  invClientName.value    = settings.last_client_name    ?? '';
+  invClientAddress.value = settings.last_client_address ?? '';
+  invNotes.value         = settings.last_notes          ?? '';
+
+  // Restore last-used due date, or default to 30 days from now
+  if (settings.last_due_date) {
+    invDueDate.value = settings.last_due_date;
+  } else {
+    const due = new Date();
+    due.setDate(due.getDate() + 30);
+    invDueDate.value = due.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  }
+
+  // Restore last-used project filter
+  if (settings.last_project_id != null) {
+    invProjectFilter.value = String(settings.last_project_id);
+  }
+
+  // default date range same logic as export modal
+  if (lastRange) {
+    setFpDate(fpInvFrom, lastRange.range_to + 86_400_000);
+  } else {
+    setFpDate(fpInvFrom, null);
+  }
+  setFpDate(fpInvTo, Date.now());
+
+  invoiceModal.classList.add('open');
+}
+
+invoiceModalClose.addEventListener('click', () => invoiceModal.classList.remove('open'));
+invoiceModal.addEventListener('click', (e) => {
+  if (e.target === invoiceModal) invoiceModal.classList.remove('open');
+});
+
+function getInvoiceFormData(): InvoiceFormData {
+  const from = invFromDate.value ? dateInputToStartMs(invFromDate.value) : null;
+  const to = invToDate.value ? dateInputToEndMs(invToDate.value) : null;
+  return {
+    invoiceNumber: invNumber.value.trim(),
+    dueDate: invDueDate.value.trim(),
+    paymentTerms: invPaymentTerms.value,
+    yourName: invYourName.value.trim(),
+    yourCompany: invYourCompany.value.trim(),
+    yourAddress: invYourAddress.value.trim(),
+    yourEmail: invYourEmail.value.trim(),
+    yourPhone: invYourPhone.value.trim(),
+    clientName: invClientName.value.trim(),
+    clientAddress: invClientAddress.value.trim(),
+    notes: invNotes.value.trim(),
+    rangeFrom: from,
+    rangeTo: (to !== null && from !== null && to >= from) ? to : null,
+    projectId: invProjectFilter.value ? Number(invProjectFilter.value) : null,
+  };
+}
+
+let previewRefreshHandle: number | undefined;
+function schedulePreviewRefresh() {
+  if (previewRefreshHandle) clearTimeout(previewRefreshHandle);
+  previewRefreshHandle = window.setTimeout(() => {
+    window.api.refreshInvoicePreview({ ...getInvoiceFormData(), templateId: selectedTemplateId });
+  }, 400);
+}
+
+// Auto-save all form fields to the database 800 ms after the user stops typing/changing.
+let settingsSaveHandle: number | undefined;
+function scheduleSettingsSave() {
+  if (settingsSaveHandle) clearTimeout(settingsSaveHandle);
+  settingsSaveHandle = window.setTimeout(() => {
+    window.api.saveInvoiceSettings({
+      your_name:             invYourName.value.trim(),
+      your_company:          invYourCompany.value.trim(),
+      your_address:          invYourAddress.value.trim(),
+      your_email:            invYourEmail.value.trim(),
+      your_phone:            invYourPhone.value.trim(),
+      preferred_template_id: selectedTemplateId,
+      default_payment_terms: invPaymentTerms.value,
+      last_client_name:      invClientName.value.trim(),
+      last_client_address:   invClientAddress.value.trim(),
+      last_due_date:         invDueDate.value.trim(),
+      last_notes:            invNotes.value.trim(),
+      last_project_id:       invProjectFilter.value ? Number(invProjectFilter.value) : null,
+    });
+  }, 800);
+}
+
+const allSavedFields = [
+  invYourName, invYourCompany, invYourAddress, invYourEmail, invYourPhone,
+  invClientName, invClientAddress, invDueDate, invNotes,
+];
+allSavedFields.forEach((el) => el.addEventListener('input', scheduleSettingsSave));
+invPaymentTerms.addEventListener('change', scheduleSettingsSave);
+invProjectFilter.addEventListener('change', scheduleSettingsSave);
+
+// Attach live-refresh listeners to all invoice form fields
+const invoiceFormFields = [
+  invNumber, invDueDate, invYourName, invYourCompany, invYourAddress,
+  invYourEmail, invYourPhone, invClientName, invClientAddress, invNotes,
+  invFromDate, invToDate,
+];
+invoiceFormFields.forEach((el) => el.addEventListener('input', schedulePreviewRefresh));
+invPaymentTerms.addEventListener('change', schedulePreviewRefresh);
+invProjectFilter.addEventListener('change', schedulePreviewRefresh);
+
+invoiceExportBtn.addEventListener('click', async () => {
+  if (!invFromDate.value || !invToDate.value) {
+    invoiceModalStatus.textContent = 'Please select a date range.';
+    invoiceModalStatus.style.color = 'var(--danger)';
+    return;
+  }
+  if (!invClientName.value.trim()) {
+    invoiceModalStatus.textContent = 'Client name is required.';
+    invoiceModalStatus.style.color = 'var(--danger)';
+    return;
+  }
+
+  // persist all settings before export
+  await window.api.saveInvoiceSettings({
+    your_name:             invYourName.value.trim(),
+    your_company:          invYourCompany.value.trim(),
+    your_address:          invYourAddress.value.trim(),
+    your_email:            invYourEmail.value.trim(),
+    your_phone:            invYourPhone.value.trim(),
+    preferred_template_id: selectedTemplateId,
+    default_payment_terms: invPaymentTerms.value,
+    last_client_name:      invClientName.value.trim(),
+    last_client_address:   invClientAddress.value.trim(),
+    last_due_date:         invDueDate.value.trim(),
+    last_notes:            invNotes.value.trim(),
+    last_project_id:       invProjectFilter.value ? Number(invProjectFilter.value) : null,
+  });
+
+  const rangeFrom = dateInputToStartMs(invFromDate.value);
+  const rangeTo = dateInputToEndMs(invToDate.value);
+  const projectId = invProjectFilter.value ? Number(invProjectFilter.value) : null;
+
+  invoiceExportBtn.disabled = true;
+  invoiceModalStatus.textContent = 'Generating PDF…';
+  invoiceModalStatus.style.color = 'var(--text-muted)';
+  try {
+    const filePath = await window.api.exportInvoice({
+      templateId: selectedTemplateId,
+      invoiceNumber: invNumber.value.trim() || 'INV-0001',
+      dueDate: invDueDate.value,
+      paymentTerms: invPaymentTerms.value.trim(),
+      clientName: invClientName.value.trim(),
+      clientAddress: invClientAddress.value.trim(),
+      notes: invNotes.value.trim(),
+      rangeFrom,
+      rangeTo,
+      projectId,
+    });
+    if (filePath) {
+      invoiceModalStatus.textContent = `Saved to ${filePath}`;
+      invoiceModalStatus.style.color = 'var(--success)';
+    } else {
+      invoiceModalStatus.textContent = 'Export cancelled.';
+      invoiceModalStatus.style.color = 'var(--text-muted)';
+    }
+  } catch {
+    invoiceModalStatus.textContent = 'PDF generation failed.';
+    invoiceModalStatus.style.color = 'var(--danger)';
+  }
+  invoiceExportBtn.disabled = false;
 });
 
 (async () => {

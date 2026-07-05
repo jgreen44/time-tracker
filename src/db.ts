@@ -227,6 +227,27 @@ export function listAllEntries(): EntryWithProject[] {
     .all() as EntryWithProject[];
 }
 
+export function listEntriesInRange(
+  fromMs: number,
+  toMs: number,
+  projectId: number | null = null
+): EntryWithProject[] {
+  const conditions: string[] = ['entries.started_at >= ? AND entries.started_at <= ?'];
+  const params: (number | null)[] = [fromMs, toMs];
+  if (projectId !== null) {
+    conditions.push('entries.project_id = ?');
+    params.push(projectId);
+  }
+  return db
+    .prepare(
+      `SELECT entries.id, projects.name AS project_name, entries.started_at, entries.ended_at, entries.note, entries.hourly_rate
+       FROM entries JOIN projects ON projects.id = entries.project_id
+       WHERE ${conditions.join(' AND ')}
+       ORDER BY entries.started_at ASC`
+    )
+    .all(...params) as EntryWithProject[];
+}
+
 export function listEntriesPage(limit: number, offset: number): EntryWithProject[] {
   return db
     .prepare(
@@ -241,6 +262,217 @@ export function listEntriesPage(limit: number, offset: number): EntryWithProject
 export function countAllEntries(): number {
   const row = db.prepare('SELECT COUNT(*) AS count FROM entries').get() as { count: number };
   return row.count;
+}
+
+// ── Export history ────────────────────────────────────────────────────────────
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS export_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    exported_at INTEGER NOT NULL,
+    range_from INTEGER NOT NULL,
+    range_to INTEGER NOT NULL,
+    file_path TEXT,
+    format TEXT NOT NULL DEFAULT 'xlsx'
+  );
+  CREATE TABLE IF NOT EXISTS invoice_settings (
+    id INTEGER PRIMARY KEY DEFAULT 1,
+    your_name TEXT,
+    your_company TEXT,
+    your_address TEXT,
+    your_email TEXT,
+    your_phone TEXT,
+    preferred_template_id INTEGER NOT NULL DEFAULT 1,
+    default_payment_terms TEXT NOT NULL DEFAULT 'Net 30',
+    last_client_name TEXT,
+    last_client_address TEXT,
+    last_due_date TEXT,
+    last_notes TEXT,
+    last_project_id INTEGER
+  );
+  CREATE TABLE IF NOT EXISTS invoices (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    invoice_number TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    client_name TEXT,
+    client_address TEXT,
+    due_date TEXT,
+    payment_terms TEXT,
+    notes TEXT,
+    project_id INTEGER,
+    range_from INTEGER NOT NULL,
+    range_to INTEGER NOT NULL,
+    template_id INTEGER NOT NULL DEFAULT 1,
+    file_path TEXT
+  );
+`);
+
+// ── invoice_settings column migrations (existing databases) ──────────────────
+const invSettingsCols = db.prepare("PRAGMA table_info(invoice_settings)").all() as { name: string }[];
+if (!invSettingsCols.some((c) => c.name === 'preferred_template_id')) {
+  db.exec('ALTER TABLE invoice_settings ADD COLUMN preferred_template_id INTEGER NOT NULL DEFAULT 1');
+}
+if (!invSettingsCols.some((c) => c.name === 'default_payment_terms')) {
+  db.exec("ALTER TABLE invoice_settings ADD COLUMN default_payment_terms TEXT NOT NULL DEFAULT 'Net 30'");
+}
+if (!invSettingsCols.some((c) => c.name === 'last_client_name')) {
+  db.exec('ALTER TABLE invoice_settings ADD COLUMN last_client_name TEXT');
+}
+if (!invSettingsCols.some((c) => c.name === 'last_client_address')) {
+  db.exec('ALTER TABLE invoice_settings ADD COLUMN last_client_address TEXT');
+}
+if (!invSettingsCols.some((c) => c.name === 'last_due_date')) {
+  db.exec('ALTER TABLE invoice_settings ADD COLUMN last_due_date TEXT');
+}
+if (!invSettingsCols.some((c) => c.name === 'last_notes')) {
+  db.exec('ALTER TABLE invoice_settings ADD COLUMN last_notes TEXT');
+}
+if (!invSettingsCols.some((c) => c.name === 'last_project_id')) {
+  db.exec('ALTER TABLE invoice_settings ADD COLUMN last_project_id INTEGER');
+}
+
+export interface ExportRange {
+  range_from: number;
+  range_to: number;
+}
+
+export function getLastExportRange(): ExportRange | null {
+  return (
+    (db
+      .prepare('SELECT range_from, range_to FROM export_history ORDER BY exported_at DESC LIMIT 1')
+      .get() as ExportRange | undefined) ?? null
+  );
+}
+
+export function saveExportRecord(
+  rangeFrom: number,
+  rangeTo: number,
+  filePath: string,
+  format: string
+): void {
+  db
+    .prepare(
+      'INSERT INTO export_history (exported_at, range_from, range_to, file_path, format) VALUES (?, ?, ?, ?, ?)'
+    )
+    .run(Date.now(), rangeFrom, rangeTo, filePath, format);
+}
+
+// ── Invoice settings ──────────────────────────────────────────────────────────
+
+export interface InvoiceSettings {
+  id: number;
+  your_name: string | null;
+  your_company: string | null;
+  your_address: string | null;
+  your_email: string | null;
+  your_phone: string | null;
+  preferred_template_id: number;
+  default_payment_terms: string;
+  last_client_name: string | null;
+  last_client_address: string | null;
+  last_due_date: string | null;
+  last_notes: string | null;
+  last_project_id: number | null;
+}
+
+export function getInvoiceSettings(): InvoiceSettings {
+  const row = db.prepare('SELECT * FROM invoice_settings WHERE id = 1').get() as
+    | InvoiceSettings
+    | undefined;
+  return (
+    row ?? {
+      id: 1,
+      your_name: null,
+      your_company: null,
+      your_address: null,
+      your_email: null,
+      your_phone: null,
+      preferred_template_id: 1,
+      default_payment_terms: 'Net 30',
+      last_client_name: null,
+      last_client_address: null,
+      last_due_date: null,
+      last_notes: null,
+      last_project_id: null,
+    }
+  );
+}
+
+export function saveInvoiceSettings(settings: Partial<Omit<InvoiceSettings, 'id'>>): void {
+  db.prepare(`
+    INSERT INTO invoice_settings
+      (id, your_name, your_company, your_address, your_email, your_phone,
+       preferred_template_id, default_payment_terms,
+       last_client_name, last_client_address, last_due_date, last_notes, last_project_id)
+    VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      your_name = excluded.your_name,
+      your_company = excluded.your_company,
+      your_address = excluded.your_address,
+      your_email = excluded.your_email,
+      your_phone = excluded.your_phone,
+      preferred_template_id = excluded.preferred_template_id,
+      default_payment_terms = excluded.default_payment_terms,
+      last_client_name = excluded.last_client_name,
+      last_client_address = excluded.last_client_address,
+      last_due_date = excluded.last_due_date,
+      last_notes = excluded.last_notes,
+      last_project_id = excluded.last_project_id
+  `).run(
+    settings.your_name ?? null,
+    settings.your_company ?? null,
+    settings.your_address ?? null,
+    settings.your_email ?? null,
+    settings.your_phone ?? null,
+    settings.preferred_template_id ?? 1,
+    settings.default_payment_terms ?? 'Net 30',
+    settings.last_client_name ?? null,
+    settings.last_client_address ?? null,
+    settings.last_due_date ?? null,
+    settings.last_notes ?? null,
+    settings.last_project_id ?? null
+  );
+}
+
+export function getNextInvoiceNumber(): string {
+  const row = db.prepare('SELECT COUNT(*) AS count FROM invoices').get() as { count: number };
+  return `INV-${String(row.count + 1).padStart(4, '0')}`;
+}
+
+export interface InvoiceSaveParams {
+  invoiceNumber: string;
+  clientName: string;
+  clientAddress: string;
+  dueDate: string;
+  paymentTerms: string;
+  notes: string;
+  projectId: number | null;
+  rangeFrom: number;
+  rangeTo: number;
+  templateId: number;
+  filePath: string;
+}
+
+export function saveInvoice(params: InvoiceSaveParams): void {
+  db.prepare(`
+    INSERT INTO invoices
+      (invoice_number, created_at, client_name, client_address, due_date, payment_terms,
+       notes, project_id, range_from, range_to, template_id, file_path)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    params.invoiceNumber,
+    Date.now(),
+    params.clientName || null,
+    params.clientAddress || null,
+    params.dueDate || null,
+    params.paymentTerms || null,
+    params.notes || null,
+    params.projectId,
+    params.rangeFrom,
+    params.rangeTo,
+    params.templateId,
+    params.filePath || null
+  );
 }
 
 export function closeDb(): void {
