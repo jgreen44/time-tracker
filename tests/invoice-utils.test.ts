@@ -57,6 +57,11 @@ describe('formatLocalDate', () => {
   it('handles epoch (0)', () => {
     expect(() => formatLocalDate(0)).not.toThrow();
   });
+
+  it('is consistent for the same timestamp called twice', () => {
+    const ms = 1_720_000_000_000;
+    expect(formatLocalDate(ms)).toBe(formatLocalDate(ms));
+  });
 });
 
 // ── formatLocalTime ───────────────────────────────────────────────────────────
@@ -69,6 +74,16 @@ describe('formatLocalTime', () => {
   it('matches new Date(ms).toLocaleTimeString()', () => {
     const ms = 1_700_000_000_000;
     expect(formatLocalTime(ms)).toBe(new Date(ms).toLocaleTimeString());
+  });
+
+  it('handles epoch (0)', () => {
+    expect(() => formatLocalTime(0)).not.toThrow();
+  });
+
+  it('returns different strings for different timestamps', () => {
+    const a = formatLocalTime(0);
+    const b = formatLocalTime(3_600_000); // 1 hour later
+    expect(a).not.toBe(b);
   });
 });
 
@@ -91,7 +106,6 @@ describe('entriesToLineItems', () => {
 
   it('computes hours correctly (ms → hours)', () => {
     const items = entriesToLineItems(entries);
-    // Entry 0: 3,600,000 ms = 1 hour exactly
     expect(items[0].hours).toBeCloseTo(1.0, 5);
   });
 
@@ -126,6 +140,27 @@ describe('entriesToLineItems', () => {
     ];
     expect(entriesToLineItems(running)).toHaveLength(0);
   });
+
+  it('carries project_name onto each line item', () => {
+    const items = entriesToLineItems(entries);
+    expect(items[0].project).toBe('Web Dev');
+    expect(items[1].project).toBe('Design');
+  });
+
+  it('sets date field as a formatted string', () => {
+    const items = entriesToLineItems(entries);
+    expect(typeof items[0].date).toBe('string');
+    expect(items[0].date.length).toBeGreaterThan(0);
+  });
+
+  it('handles fractional hours correctly', () => {
+    const halfHour: RawEntry[] = [
+      { project_name: 'X', started_at: T(0), ended_at: T(1_800_000), note: null, hourly_rate: 100 },
+    ];
+    const items = entriesToLineItems(halfHour);
+    expect(items[0].hours).toBeCloseTo(0.5, 5);
+    expect(items[0].amount).toBeCloseTo(50, 5);
+  });
 });
 
 // ── buildInvoiceData ──────────────────────────────────────────────────────────
@@ -137,10 +172,17 @@ describe('buildInvoiceData', () => {
     expect(data.invoiceNumber).toBe('INV-0042');
     expect(data.clientName).toBe('Acme Corp');
     expect(data.yourName).toBe('Jane Smith');
+    expect(data.yourEmail).toBe('jane@smith.dev');
+    expect(data.yourPhone).toBe('555-1234');
+    expect(data.yourAddress).toBe('123 Main St');
+    expect(data.yourCompany).toBe('Smith LLC');
+    expect(data.paymentTerms).toBe('Net 30');
+    expect(data.clientAddress).toBe('456 Client Ave');
+    expect(data.notes).toBe('Thanks!');
     expect(data.dateRange).toBe('Jul – Aug 2026');
   });
 
-  it('uses fallback values when fields are empty strings', () => {
+  it('leaves fields blank when passed as empty strings', () => {
     const data = buildInvoiceData(
       makeParams({ invoiceNumber: '', dueDate: '', yourName: '', clientName: '', yourCompany: '' }),
       SAMPLE_LINE_ITEMS,
@@ -148,9 +190,9 @@ describe('buildInvoiceData', () => {
     );
     expect(data.invoiceNumber).toBe('INV-0001');
     expect(data.dueDate).toBe('Net 30');
-    expect(data.yourName).toBe('Your Name');
-    expect(data.clientName).toBe('Acme Corporation');
-    expect(data.yourCompany).toBe('Your Company LLC');
+    expect(data.yourName).toBe('');
+    expect(data.clientName).toBe('');
+    expect(data.yourCompany).toBe('');
   });
 
   it('computes subtotal as sum of all line item amounts', () => {
@@ -185,6 +227,16 @@ describe('buildInvoiceData', () => {
     const data = buildInvoiceData(makeParams(), SAMPLE_LINE_ITEMS, 'range');
     expect(data.invoiceDate).toBe(new Date().toLocaleDateString());
   });
+
+  it('preserves notes exactly', () => {
+    const data = buildInvoiceData(makeParams({ notes: 'Wire transfer only.\nNet 14.' }), [], 'r');
+    expect(data.notes).toBe('Wire transfer only.\nNet 14.');
+  });
+
+  it('handles null rangeFrom/rangeTo (preview mode)', () => {
+    const data = buildInvoiceData(makeParams({ rangeFrom: null, rangeTo: null }), [], 'r');
+    expect(data.subtotal).toBe(0);
+  });
 });
 
 // ── SAMPLE_LINE_ITEMS ─────────────────────────────────────────────────────────
@@ -205,6 +257,18 @@ describe('SAMPLE_LINE_ITEMS', () => {
       expect(item.hours * item.rate).toBeCloseTo(item.amount, 2);
     }
   });
+
+  it('every item has a non-empty project name', () => {
+    for (const item of SAMPLE_LINE_ITEMS) {
+      expect(item.project.trim().length).toBeGreaterThan(0);
+    }
+  });
+
+  it('every item has a non-empty date string', () => {
+    for (const item of SAMPLE_LINE_ITEMS) {
+      expect(item.date.trim().length).toBeGreaterThan(0);
+    }
+  });
 });
 
 // ── PREVIEW_SCREEN_CSS ────────────────────────────────────────────────────────
@@ -218,6 +282,15 @@ describe('PREVIEW_SCREEN_CSS', () => {
   it('contains @media screen block', () => {
     expect(PREVIEW_SCREEN_CSS).toContain('@media screen');
   });
+
+  it('contains box-shadow for preview card appearance', () => {
+    expect(PREVIEW_SCREEN_CSS).toContain('box-shadow');
+  });
+
+  it('is wrapped in <style> tags', () => {
+    expect(PREVIEW_SCREEN_CSS.trim()).toMatch(/^<style>/);
+    expect(PREVIEW_SCREEN_CSS.trim()).toMatch(/<\/style>$/);
+  });
 });
 
 // ── buildPreviewHtml ──────────────────────────────────────────────────────────
@@ -225,26 +298,38 @@ describe('PREVIEW_SCREEN_CSS', () => {
 describe('buildPreviewHtml', () => {
   const data = buildInvoiceData(makeParams(), SAMPLE_LINE_ITEMS, 'Jul 2026');
 
-  it('injects PREVIEW_SCREEN_CSS into the <head>', () => {
-    const html = buildPreviewHtml(1, data);
-    expect(html).toContain('@media screen');
+  it('injects PREVIEW_SCREEN_CSS into the output', () => {
+    expect(buildPreviewHtml(1, data)).toContain('@media screen');
   });
 
   it('does not return empty string', () => {
-    const html = buildPreviewHtml(1, data);
-    expect(html.length).toBeGreaterThan(500);
+    expect(buildPreviewHtml(1, data).length).toBeGreaterThan(500);
   });
 
   it('falls back to template 1 for an unknown templateId', () => {
-    const htmlFallback = buildPreviewHtml(999, data);
-    const html1        = buildPreviewHtml(1, data);
-    expect(htmlFallback).toBe(html1);
+    expect(buildPreviewHtml(999, data)).toBe(buildPreviewHtml(1, data));
   });
 
   it('returns different HTML for different template IDs', () => {
-    const html1 = buildPreviewHtml(1, data);
-    const html5 = buildPreviewHtml(5, data); // Dark Tech
-    expect(html1).not.toBe(html5);
+    expect(buildPreviewHtml(1, data)).not.toBe(buildPreviewHtml(5, data));
+  });
+
+  it('includes invoice number from data', () => {
+    expect(buildPreviewHtml(1, data)).toContain('INV-0042');
+  });
+
+  it('includes client name from data', () => {
+    expect(buildPreviewHtml(1, data)).toContain('Acme Corp');
+  });
+
+  it('generates valid HTML (has DOCTYPE)', () => {
+    expect(buildPreviewHtml(1, data)).toMatch(/<!DOCTYPE html>/i);
+  });
+
+  it('works for all template IDs 1-10', () => {
+    for (let id = 1; id <= 10; id++) {
+      expect(() => buildPreviewHtml(id, data)).not.toThrow();
+    }
   });
 });
 
@@ -260,9 +345,23 @@ describe('findTemplate', () => {
     expect(findTemplate(999).id).toBe(1);
   });
 
+  it('falls back to template 1 for id 0', () => {
+    expect(findTemplate(0).id).toBe(1);
+  });
+
   it('works for all ids 1-10', () => {
     for (let id = 1; id <= 10; id++) {
       expect(findTemplate(id).id).toBe(id);
     }
+  });
+
+  it('returned template has a render function', () => {
+    expect(typeof findTemplate(1).render).toBe('function');
+  });
+
+  it('returned template has non-empty name and description', () => {
+    const t = findTemplate(2);
+    expect(t.name.trim().length).toBeGreaterThan(0);
+    expect(t.description.trim().length).toBeGreaterThan(0);
   });
 });
