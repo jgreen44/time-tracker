@@ -115,6 +115,8 @@ ipcMain.handle(
 );
 ipcMain.handle('entries:delete', (_event, entryId: number) => db.deleteEntry(entryId));
 ipcMain.handle('entries:todaySummary', () => db.getTodaySummary());
+ipcMain.handle('entries:recentNotes', (_event, limit: number) => db.getRecentNotes(limit));
+ipcMain.handle('entries:timeTotals', () => db.getTimeTotals());
 ipcMain.handle('entries:earningsSummary', (_event, projectId: number | null) => db.getEarningsSummary(projectId));
 ipcMain.handle('projects:updateRate', (_event, projectId: number, hourlyRate: number | null) =>
   db.updateProjectRate(projectId, hourlyRate)

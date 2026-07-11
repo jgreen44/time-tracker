@@ -17,6 +17,8 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('entries:createManual', projectId, startedAt, endedAt, note, hourlyRate),
   deleteEntry: (entryId: number) => ipcRenderer.invoke('entries:delete', entryId),
   getTodaySummary: () => ipcRenderer.invoke('entries:todaySummary'),
+  getRecentNotes: (limit: number) => ipcRenderer.invoke('entries:recentNotes', limit),
+  getTimeTotals: () => ipcRenderer.invoke('entries:timeTotals'),
   getLastExportRange: () => ipcRenderer.invoke('entries:getLastExportRange'),
   exportExcel: (params: { rangeFrom: number; rangeTo: number; projectId?: number | null }) =>
     ipcRenderer.invoke('entries:exportExcel', params),

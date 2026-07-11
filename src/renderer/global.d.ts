@@ -51,6 +51,8 @@ interface TimeTrackerApi {
   ): Promise<unknown>;
   deleteEntry(entryId: number): Promise<void>;
   getTodaySummary(): Promise<{ project_id: number; project_name: string; total_ms: number }[]>;
+  getRecentNotes(limit: number): Promise<string[]>;
+  getTimeTotals(): Promise<{ week: number; allTime: number }>;
   getLastExportRange(): Promise<{ range_from: number; range_to: number } | null>;
   exportExcel(params: { rangeFrom: number; rangeTo: number; projectId?: number | null }): Promise<string | null>;
   getEarningsSummary(projectId?: number | null): Promise<{ today: number; week: number; allTime: number }>;

@@ -1,6 +1,10 @@
 // flatpickr is loaded as a UMD global via <script> in index.html (no require()).
 // Minimal ambient declaration for the subset of the API we actually call.
-interface FpInstance { setDate(d: Date, triggerChange: boolean): void; clear(): void; }
+interface FpInstance {
+  setDate(d: Date, triggerChange: boolean): void;
+  clear(): void;
+  config: { onChange: Array<() => void> };
+}
 interface FpOptions { dateFormat?: string; allowInput?: boolean; disableMobile?: boolean; }
 declare function flatpickr(el: HTMLInputElement, opts?: FpOptions): FpInstance;
 
@@ -26,8 +30,11 @@ const summaryEl = document.getElementById('summary') as HTMLDivElement;
 const exportBtn = document.getElementById('exportBtn') as HTMLButtonElement;
 const exportStatusEl = document.getElementById('exportStatus') as HTMLDivElement;
 const noteInput = document.getElementById('noteInput') as HTMLInputElement;
+const noteDropdown = document.getElementById('noteDropdown') as HTMLDivElement;
 const rateInput = document.getElementById('rateInput') as HTMLInputElement;
 const currentEarningsEl = document.getElementById('currentEarnings') as HTMLDivElement;
+const weekTotalEl = document.getElementById('weekTotal') as HTMLSpanElement;
+const allTimeTotalEl = document.getElementById('allTimeTotal') as HTMLSpanElement;
 const earningsTodayEl = document.getElementById('earningsToday') as HTMLSpanElement;
 const earningsWeekEl = document.getElementById('earningsWeek') as HTMLSpanElement;
 const earningsAllTimeEl = document.getElementById('earningsAllTime') as HTMLSpanElement;
@@ -110,6 +117,39 @@ themeToggle.addEventListener('click', () => {
 
 initTheme();
 
+// ── Recent notes dropdown ─────────────────────────────────────────────────────
+
+async function renderNoteDropdown(filter: string): Promise<void> {
+  const all = await window.api.getRecentNotes(5);
+  const notes = all.filter((n) =>
+    filter.trim() === '' || n.toLowerCase().includes(filter.toLowerCase())
+  );
+  if (notes.length === 0) {
+    noteDropdown.style.display = 'none';
+    return;
+  }
+  noteDropdown.innerHTML = '';
+  for (const note of notes) {
+    const item = document.createElement('div');
+    item.className = 'note-dropdown-item';
+    item.textContent = note;
+    item.addEventListener('mousedown', (e) => {
+      e.preventDefault(); // prevent blur before click registers
+      noteInput.value = note;
+      noteDropdown.style.display = 'none';
+      if (activeEntry) window.api.updateNote(activeEntry.id, note);
+    });
+    noteDropdown.appendChild(item);
+  }
+  noteDropdown.style.display = 'block';
+}
+
+noteInput.addEventListener('focus', () => { void renderNoteDropdown(noteInput.value); });
+noteInput.addEventListener('input', () => { void renderNoteDropdown(noteInput.value); });
+noteInput.addEventListener('blur', () => {
+  setTimeout(() => { noteDropdown.style.display = 'none'; }, 150);
+});
+
 const copyrightYearEl = document.getElementById('copyrightYear') as HTMLSpanElement;
 const authorLink = document.getElementById('authorLink') as HTMLAnchorElement;
 copyrightYearEl.textContent = String(new Date().getFullYear());
@@ -123,6 +163,10 @@ let projects: Awaited<ReturnType<typeof window.api.listProjects>> = [];
 let tickHandle: number | undefined;
 let noteSaveHandle: number | undefined;
 let rateSaveHandle: number | undefined;
+let cachedTimeTotals = { week: 0, allTime: 0 };
+let totalsSnapshotTime = 0;
+let cachedSummaryMs = new Map<number, number>(); // project_id → total_ms at snapshot
+let summaryValueSpans = new Map<number, HTMLSpanElement>(); // project_id → value span
 const entryRateSaveHandles = new Map<number, number>();
 const entryTimeSaveHandles = new Map<number, number>();
 
@@ -168,18 +212,35 @@ async function refreshProjects() {
 }
 
 async function refreshSummary() {
-  const summary = await window.api.getTodaySummary();
+  const [summary, totals] = await Promise.all([
+    window.api.getTodaySummary(),
+    window.api.getTimeTotals(),
+  ]);
   summaryEl.innerHTML = '';
+  cachedSummaryMs = new Map();
+  summaryValueSpans = new Map();
   if (summary.length === 0) {
     summaryEl.textContent = 'No time tracked yet.';
-    return;
+  } else {
+    for (const row of summary) {
+      const div = document.createElement('div');
+      div.className = 'summary-row';
+      const nameSpan = document.createElement('span');
+      nameSpan.textContent = row.project_name;
+      const valueSpan = document.createElement('span');
+      valueSpan.className = 'value';
+      valueSpan.textContent = formatDuration(row.total_ms);
+      div.appendChild(nameSpan);
+      div.appendChild(valueSpan);
+      summaryEl.appendChild(div);
+      cachedSummaryMs.set(row.project_id, row.total_ms);
+      summaryValueSpans.set(row.project_id, valueSpan);
+    }
   }
-  for (const row of summary) {
-    const div = document.createElement('div');
-    div.className = 'summary-row';
-    div.innerHTML = `<span>${row.project_name}</span><span class="value">${formatDuration(row.total_ms)}</span>`;
-    summaryEl.appendChild(div);
-  }
+  cachedTimeTotals = totals;
+  totalsSnapshotTime = Date.now();
+  weekTotalEl.textContent = formatDuration(totals.week);
+  allTimeTotalEl.textContent = formatDuration(totals.allTime);
 }
 
 async function refreshEarnings() {
@@ -514,10 +575,21 @@ function tick() {
     currentEarningsEl.textContent = formatMoney(0);
     return;
   }
-  const elapsedMs = Date.now() - activeEntry.started_at;
+  const now = Date.now();
+  const elapsedMs = now - activeEntry.started_at;
   elapsedEl.textContent = formatDuration(elapsedMs);
   const rate = activeEntry.hourly_rate ?? 0;
   currentEarningsEl.textContent = formatMoney((elapsedMs / 3600000) * rate);
+
+  const delta = now - totalsSnapshotTime;
+  weekTotalEl.textContent = formatDuration(cachedTimeTotals.week + delta);
+  allTimeTotalEl.textContent = formatDuration(cachedTimeTotals.allTime + delta);
+
+  const activeProjectSpan = summaryValueSpans.get(activeEntry.project_id);
+  if (activeProjectSpan) {
+    const base = cachedSummaryMs.get(activeEntry.project_id) ?? 0;
+    activeProjectSpan.textContent = formatDuration(base + delta);
+  }
 }
 
 function setRunningUi(running: boolean) {
@@ -551,7 +623,8 @@ startStopBtn.addEventListener('click', async () => {
   } else {
     const projectId = Number(projectSelect.value);
     if (!projectId) return;
-    await window.api.startEntry(projectId, noteInput.value.trim() || undefined);
+    const note = noteInput.value.trim();
+    await window.api.startEntry(projectId, note || undefined);
   }
   await refreshActiveEntry();
   await refreshSummary();
@@ -616,11 +689,16 @@ function dateInputToEndMs(val: string): number {
 }
 
 // ── Flatpickr date pickers ────────────────────────────────────────────────────
-// All four date inputs use the same config: calendar-only (no typing),
-// YYYY-MM-DD internal format so the existing helpers work unchanged.
 
 const fpConfig: FpOptions = {
   dateFormat: 'Y-m-d',
+  allowInput: false,
+  disableMobile: true,
+};
+
+// Due date uses a human-readable display format; value stored as "Month D, YYYY".
+const fpDueDateConfig: FpOptions = {
+  dateFormat: 'M j, Y',
   allowInput: false,
   disableMobile: true,
 };
@@ -629,6 +707,7 @@ const fpExportFrom = flatpickr(exportFromDate, fpConfig);
 const fpExportTo   = flatpickr(exportToDate,   fpConfig);
 const fpInvFrom    = flatpickr(invFromDate,     fpConfig);
 const fpInvTo      = flatpickr(invToDate,       fpConfig);
+const fpInvDueDate = flatpickr(invDueDate,      fpDueDateConfig);
 
 /** Set a flatpickr instance to a date without triggering the change event. */
 function setFpDate(fp: FpInstance, ms: number | null) {
@@ -778,12 +857,11 @@ async function openInvoiceModal() {
   invNotes.value         = settings.last_notes          ?? '';
 
   // Restore last-used due date, or default to 30 days from now
-  if (settings.last_due_date) {
-    invDueDate.value = settings.last_due_date;
-  } else {
-    const due = new Date();
-    due.setDate(due.getDate() + 30);
-    invDueDate.value = due.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  {
+    const dueMs = settings.last_due_date
+      ? new Date(settings.last_due_date).getTime()
+      : Date.now() + 30 * 24 * 60 * 60 * 1000;
+    fpInvDueDate.setDate(new Date(dueMs), false);
   }
 
   // Restore last-used project filter
@@ -860,21 +938,27 @@ function scheduleSettingsSave() {
 
 const allSavedFields = [
   invYourName, invYourCompany, invYourAddress, invYourEmail, invYourPhone,
-  invClientName, invClientAddress, invDueDate, invNotes,
+  invClientName, invClientAddress, invNotes,
 ];
 allSavedFields.forEach((el) => el.addEventListener('input', scheduleSettingsSave));
 invPaymentTerms.addEventListener('change', scheduleSettingsSave);
 invProjectFilter.addEventListener('change', scheduleSettingsSave);
 
-// Attach live-refresh listeners to all invoice form fields
+// Attach live-refresh listeners to all invoice form fields.
+// Text inputs use 'input'; flatpickr pickers use their onChange callback (added below).
 const invoiceFormFields = [
-  invNumber, invDueDate, invYourName, invYourCompany, invYourAddress,
+  invNumber, invYourName, invYourCompany, invYourAddress,
   invYourEmail, invYourPhone, invClientName, invClientAddress, invNotes,
-  invFromDate, invToDate,
 ];
 invoiceFormFields.forEach((el) => el.addEventListener('input', schedulePreviewRefresh));
 invPaymentTerms.addEventListener('change', schedulePreviewRefresh);
 invProjectFilter.addEventListener('change', schedulePreviewRefresh);
+
+// Flatpickr onChange → trigger both live preview and auto-save.
+// invFromDate / invToDate use YYYY-MM-DD; invDueDate uses human-readable format.
+fpInvFrom.config.onChange.push(() => schedulePreviewRefresh());
+fpInvTo.config.onChange.push(() => schedulePreviewRefresh());
+fpInvDueDate.config.onChange.push(() => { schedulePreviewRefresh(); scheduleSettingsSave(); });
 
 invoiceExportBtn.addEventListener('click', async () => {
   if (!invFromDate.value || !invToDate.value) {

@@ -194,6 +194,39 @@ function earningsSince(sinceMs: number | null, projectId: number | null): number
   return total;
 }
 
+export interface TimeTotals {
+  week: number;
+  allTime: number;
+}
+
+function durationSince(sinceMs: number | null): number {
+  const now = Date.now();
+  const where = sinceMs !== null ? 'WHERE (started_at >= ? OR ended_at IS NULL)' : '';
+  const params = sinceMs !== null ? [sinceMs] : [];
+  const rows = db
+    .prepare(`SELECT started_at, ended_at FROM entries ${where}`)
+    .all(...params) as { started_at: number; ended_at: number | null }[];
+  let total = 0;
+  for (const row of rows) {
+    const end = row.ended_at ?? now;
+    const start = sinceMs === null ? row.started_at : Math.max(row.started_at, sinceMs);
+    if (end <= start) continue;
+    total += end - start;
+  }
+  return total;
+}
+
+export function getTimeTotals(): TimeTotals {
+  const startOfDay = new Date();
+  startOfDay.setHours(0, 0, 0, 0);
+  const startOfWeek = new Date(startOfDay);
+  startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay());
+  return {
+    week: durationSince(startOfWeek.getTime()),
+    allTime: durationSince(null),
+  };
+}
+
 export function getEarningsSummary(projectId: number | null = null): EarningsSummary {
   const startOfDay = new Date();
   startOfDay.setHours(0, 0, 0, 0);
@@ -399,6 +432,25 @@ export function getInvoiceSettings(): InvoiceSettings {
 }
 
 export function saveInvoiceSettings(settings: Partial<Omit<InvoiceSettings, 'id'>>): void {
+  // Merge the incoming partial with whatever is already stored so that
+  // callers passing only one field (e.g. { preferred_template_id }) do not
+  // accidentally wipe out the rest.
+  const current = getInvoiceSettings();
+  const merged: Omit<InvoiceSettings, 'id'> = {
+    your_name:             'your_name'             in settings ? (settings.your_name             ?? null) : current.your_name,
+    your_company:          'your_company'          in settings ? (settings.your_company          ?? null) : current.your_company,
+    your_address:          'your_address'          in settings ? (settings.your_address          ?? null) : current.your_address,
+    your_email:            'your_email'            in settings ? (settings.your_email            ?? null) : current.your_email,
+    your_phone:            'your_phone'            in settings ? (settings.your_phone            ?? null) : current.your_phone,
+    preferred_template_id: 'preferred_template_id' in settings ? (settings.preferred_template_id ?? 1)    : current.preferred_template_id,
+    default_payment_terms: 'default_payment_terms' in settings ? (settings.default_payment_terms ?? 'Net 30') : current.default_payment_terms,
+    last_client_name:      'last_client_name'      in settings ? (settings.last_client_name      ?? null) : current.last_client_name,
+    last_client_address:   'last_client_address'   in settings ? (settings.last_client_address   ?? null) : current.last_client_address,
+    last_due_date:         'last_due_date'         in settings ? (settings.last_due_date         ?? null) : current.last_due_date,
+    last_notes:            'last_notes'            in settings ? (settings.last_notes            ?? null) : current.last_notes,
+    last_project_id:       'last_project_id'       in settings ? (settings.last_project_id       ?? null) : current.last_project_id,
+  };
+
   db.prepare(`
     INSERT INTO invoice_settings
       (id, your_name, your_company, your_address, your_email, your_phone,
@@ -419,18 +471,18 @@ export function saveInvoiceSettings(settings: Partial<Omit<InvoiceSettings, 'id'
       last_notes = excluded.last_notes,
       last_project_id = excluded.last_project_id
   `).run(
-    settings.your_name ?? null,
-    settings.your_company ?? null,
-    settings.your_address ?? null,
-    settings.your_email ?? null,
-    settings.your_phone ?? null,
-    settings.preferred_template_id ?? 1,
-    settings.default_payment_terms ?? 'Net 30',
-    settings.last_client_name ?? null,
-    settings.last_client_address ?? null,
-    settings.last_due_date ?? null,
-    settings.last_notes ?? null,
-    settings.last_project_id ?? null
+    merged.your_name,
+    merged.your_company,
+    merged.your_address,
+    merged.your_email,
+    merged.your_phone,
+    merged.preferred_template_id,
+    merged.default_payment_terms,
+    merged.last_client_name,
+    merged.last_client_address,
+    merged.last_due_date,
+    merged.last_notes,
+    merged.last_project_id
   );
 }
 
@@ -473,6 +525,20 @@ export function saveInvoice(params: InvoiceSaveParams): void {
     params.templateId,
     params.filePath || null
   );
+}
+
+export function getRecentNotes(limit: number): string[] {
+  const rows = db
+    .prepare(
+      `SELECT note, MAX(started_at) AS last_used
+       FROM entries
+       WHERE note IS NOT NULL AND note != ''
+       GROUP BY note
+       ORDER BY last_used DESC
+       LIMIT ?`
+    )
+    .all(limit) as { note: string }[];
+  return rows.map((r) => r.note);
 }
 
 export function closeDb(): void {
