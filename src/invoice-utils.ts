@@ -35,6 +35,8 @@ export interface InvoiceFormParams {
   rangeFrom: number | null;
   rangeTo: number | null;
   projectId: number | null;
+  /** Earned before the invoice range minus payments. Negative = unused retainer. */
+  openingBalance?: number;
 }
 
 export const SAMPLE_LINE_ITEMS: InvoiceLineItem[] = [
@@ -47,22 +49,59 @@ export const SAMPLE_LINE_ITEMS: InvoiceLineItem[] = [
   { project: 'Web Development', date: '7/22/2026', description: 'Bug fixes & deployment',      hours: 4.0, rate: 150, amount: 600 },
 ];
 
+const MONEY_EPS = 0.005;
+const ZERO = 0;
+
+/**
+ * Prepends a retainer/prior-balance row when needed and stamps a running
+ * balance on every line. Negative balance = unused credit; positive = owed.
+ */
+export function withRunningBalances(
+  workItems: InvoiceLineItem[],
+  openingBalance: number
+): InvoiceLineItem[] {
+  const items: InvoiceLineItem[] = [];
+  let running = ZERO;
+
+  if (Math.abs(openingBalance) >= MONEY_EPS) {
+    items.push({
+      project: '',
+      date: '',
+      description: openingBalance < 0 ? 'Retainer / payments applied' : 'Prior outstanding balance',
+      hours: ZERO,
+      rate: ZERO,
+      amount: openingBalance,
+      balance: openingBalance,
+      isAdjustment: true,
+    });
+    running = openingBalance;
+  }
+
+  for (const item of workItems) {
+    running += item.amount;
+    items.push({ ...item, balance: running, isAdjustment: false });
+  }
+  return items;
+}
+
 /**
  * Build an InvoiceData object from form parameters and pre-fetched line items.
  *
  * Separating the DB fetch (in main.ts) from the data assembly (here) keeps this
  * function pure and fully testable.
- *
- * @param params       Form values from the renderer
- * @param lineItems    Pre-fetched & computed line items (pass SAMPLE_LINE_ITEMS when no real data)
- * @param dateRange    Human-readable date range string for the invoice header
  */
 export function buildInvoiceData(
   params: InvoiceFormParams,
   lineItems: InvoiceLineItem[],
   dateRange: string
 ): InvoiceData {
-  const subtotal = lineItems.reduce((s, i) => s + i.amount, 0);
+  const openingBalance = params.openingBalance ?? ZERO;
+  const workItems = lineItems.filter((item) => item.isAdjustment !== true);
+  const subtotal = workItems.reduce((sum, item) => sum + item.amount, 0);
+  const balanced = withRunningBalances(workItems, openingBalance);
+  const last = balanced.length > ZERO ? balanced[balanced.length - 1] : undefined;
+  const finalBalance = last?.balance ?? openingBalance;
+
   return {
     invoiceNumber: params.invoiceNumber || 'INV-0001',
     invoiceDate:   formatLocalDate(Date.now()),
@@ -77,10 +116,12 @@ export function buildInvoiceData(
     clientAddress: params.clientAddress || '',
     notes:         params.notes         || '',
     dateRange,
-    projectName: params.projectId ? (lineItems[0]?.project ?? '') : '',
-    lineItems,
+    projectName: params.projectId ? (workItems[0]?.project ?? '') : '',
+    lineItems: balanced,
     subtotal,
-    total: subtotal,
+    openingBalance,
+    paymentsApplied: Math.max(ZERO, -openingBalance),
+    total: Math.max(ZERO, finalBalance),
   };
 }
 

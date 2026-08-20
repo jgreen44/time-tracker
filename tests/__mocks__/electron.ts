@@ -2,9 +2,12 @@
 // environment without a running Electron process.
 
 const app = {
-  getPath: (_name: string) => '/tmp/time-tracker-test',
-  getName: () => 'time-tracker',
-  getVersion: () => '1.0.0',
+  getPath: jest.fn((_name: string) => '/tmp/time-tracker-test'),
+  getName: jest.fn(() => 'time-tracker'),
+  getVersion: jest.fn(() => '1.0.0'),
+  quit: jest.fn(),
+  on: jest.fn(),
+  requestSingleInstanceLock: jest.fn(() => true),
 };
 
 const ipcMain = {
@@ -30,7 +33,7 @@ const BrowserWindow = jest.fn().mockImplementation(() => ({
   once: jest.fn(),
   webContents: {
     once: jest.fn(),
-    printToPDF: jest.fn(),
+    printToPDF: jest.fn().mockResolvedValue(Buffer.from('pdf')),
   },
 }));
 

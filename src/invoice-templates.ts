@@ -5,6 +5,10 @@ export interface InvoiceLineItem {
   hours: number;
   rate: number;
   amount: number;
+  /** Running owed/credit position after this line. Negative = credit remaining. */
+  balance?: number;
+  /** True for retainer / prior-balance adjustment rows (not time entries). */
+  isAdjustment?: boolean;
 }
 
 export interface InvoiceData {
@@ -25,6 +29,10 @@ export interface InvoiceData {
   lineItems: InvoiceLineItem[];
   subtotal: number;
   total: number;
+  /** Earned before this invoice minus payments. Negative = unused retainer. */
+  openingBalance: number;
+  /** Unused retainer/credit applied to this invoice (always >= 0). */
+  paymentsApplied: number;
 }
 
 export interface InvoiceTemplate {
@@ -50,7 +58,28 @@ function addr(s: string): string {
 }
 
 function money(n: number): string {
-  return `$${n.toFixed(2)}`;
+  const formatted = Math.abs(n).toFixed(2);
+  return n < 0 ? `-$${formatted}` : `$${formatted}`;
+}
+
+function hasRunningBalance(d: InvoiceData): boolean {
+  return Math.abs(d.openingBalance) >= 0.005;
+}
+
+function balanceTh(d: InvoiceData): string {
+  return hasRunningBalance(d) ? '<th class="r" style="text-align:right">Balance</th>' : '';
+}
+
+function balanceTd(d: InvoiceData, item: InvoiceLineItem, extraStyle = ''): string {
+  if (!hasRunningBalance(d)) return '';
+  const b = item.balance ?? 0;
+  const tone = b < 0 ? 'color:#059669;' : '';
+  return `<td class="r" style="text-align:right;${tone}${extraStyle}">${money(b)}</td>`;
+}
+
+function paymentsAppliedRow(d: InvoiceData, rowClass: string): string {
+  if (d.paymentsApplied < 0.005) return '';
+  return `<div class="${rowClass}"><span>Retainer / payments applied</span><span>${money(-d.paymentsApplied)}</span></div>`;
 }
 
 function hours(n: number): string {
@@ -60,6 +89,7 @@ function hours(n: number): string {
 function groupByProject(items: InvoiceLineItem[]): Map<string, { items: InvoiceLineItem[]; subtotal: number }> {
   const map = new Map<string, { items: InvoiceLineItem[]; subtotal: number }>();
   for (const item of items) {
+    if (item.isAdjustment === true) continue;
     const existing = map.get(item.project);
     if (existing) {
       existing.items.push(item);
@@ -88,6 +118,7 @@ function renderClassicMinimal(d: InvoiceData): string {
         <td class="r">${hours(i.hours)}</td>
         <td class="r">${money(i.rate)}</td>
         <td class="r">${money(i.amount)}</td>
+        ${balanceTd(d, i)}
       </tr>`
     )
     .join('');
@@ -133,10 +164,11 @@ function renderClassicMinimal(d: InvoiceData): string {
     ${d.paymentTerms ? `<div class="meta-item"><div class="lbl">Terms</div><div class="val">${esc(d.paymentTerms)}</div></div>` : ''}
     <div class="meta-item"><div class="lbl">Period</div><div class="val">${esc(d.dateRange)}</div></div>
   </div>
-  <table><thead><tr><th>Date</th><th>Description</th><th class="r">Hours</th><th class="r">Rate</th><th class="r">Amount</th></tr></thead>
+  <table><thead><tr><th>Date</th><th>Description</th><th class="r">Hours</th><th class="r">Rate</th><th class="r">Amount</th>${balanceTh(d)}</tr></thead>
   <tbody>${rows}</tbody></table>
   <div class="totals">
     <div class="totals-row"><span>Subtotal</span><span>${money(d.subtotal)}</span></div>
+    ${paymentsAppliedRow(d, 'totals-row')}
     <div class="totals-row total"><span>Total Due</span><span>${money(d.total)}</span></div>
   </div>
   ${d.notes ? `<div class="notes-section"><h4>Notes</h4><p>${esc(d.notes)}</p></div>` : ''}
@@ -154,6 +186,7 @@ function renderModernGradient(d: InvoiceData): string {
         <td style="text-align:right">${hours(i.hours)}h</td>
         <td style="text-align:right">${money(i.rate)}</td>
         <td style="text-align:right;font-weight:600">${money(i.amount)}</td>
+        ${balanceTd(d, i, 'font-weight:600;')}
       </tr>`
     )
     .join('');
@@ -201,10 +234,11 @@ function renderModernGradient(d: InvoiceData): string {
     <div class="meta-chip"><div class="lbl">Period</div><div class="val">${esc(d.dateRange)}</div></div>
     <div class="meta-chip"><div class="lbl">Amount Due</div><div class="val">${money(d.total)}</div></div>
   </div>
-  <table><thead><tr><th>Date</th><th>Project / Description</th><th style="text-align:right">Hours</th><th style="text-align:right">Rate</th><th style="text-align:right">Amount</th></tr></thead>
+  <table><thead><tr><th>Date</th><th>Project / Description</th><th style="text-align:right">Hours</th><th style="text-align:right">Rate</th><th style="text-align:right">Amount</th>${balanceTh(d)}</tr></thead>
   <tbody>${rows}</tbody></table>
   <div class="totals">
     <div class="tr"><span>Subtotal</span><span>${money(d.subtotal)}</span></div>
+    ${paymentsAppliedRow(d, 'tr')}
     <div class="tr grand"><span>Total Due</span><span>${money(d.total)}</span></div>
   </div>
   ${d.notes ? `<div class="notes"><h4>Notes</h4><p>${esc(d.notes)}</p></div>` : ''}
@@ -215,9 +249,20 @@ function renderModernGradient(d: InvoiceData): string {
 
 function renderItemizedDetail(d: InvoiceData): string {
   const groups = groupByProject(d.lineItems);
+  const colCount = hasRunningBalance(d) ? 6 : 5;
   let tableRows = '';
+  for (const i of d.lineItems.filter((item) => item.isAdjustment === true)) {
+    tableRows += `<tr>
+      <td>${esc(i.date)}</td>
+      <td>${esc(i.description)}</td>
+      <td class="r"></td>
+      <td class="r"></td>
+      <td class="r">${money(i.amount)}</td>
+      ${balanceTd(d, i)}
+    </tr>`;
+  }
   for (const [project, { items, subtotal: projTotal }] of groups) {
-    tableRows += `<tr class="project-header"><td colspan="5">${esc(project)}</td></tr>`;
+    tableRows += `<tr class="project-header"><td colspan="${colCount}">${esc(project)}</td></tr>`;
     for (const i of items) {
       tableRows += `<tr>
         <td style="padding-left:20px">${esc(i.date)}</td>
@@ -225,10 +270,11 @@ function renderItemizedDetail(d: InvoiceData): string {
         <td class="r">${hours(i.hours)}h</td>
         <td class="r">${money(i.rate)}/hr</td>
         <td class="r">${money(i.amount)}</td>
+        ${balanceTd(d, i)}
       </tr>`;
     }
     if (groups.size > 1) {
-      tableRows += `<tr class="proj-subtotal"><td colspan="4" style="text-align:right;padding-right:10px">Subtotal — ${esc(project)}</td><td class="r">${money(projTotal)}</td></tr>`;
+      tableRows += `<tr class="proj-subtotal"><td colspan="4" style="text-align:right;padding-right:10px">Subtotal — ${esc(project)}</td><td class="r">${money(projTotal)}</td>${hasRunningBalance(d) ? '<td></td>' : ''}</tr>`;
     }
   }
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
@@ -272,10 +318,11 @@ function renderItemizedDetail(d: InvoiceData): string {
     ${d.paymentTerms ? `<div class="meta-item"><div class="lbl">Payment Terms</div><div class="val">${esc(d.paymentTerms)}</div></div>` : ''}
     <div class="meta-item"><div class="lbl">Billing Period</div><div class="val">${esc(d.dateRange)}</div></div>
   </div>
-  <table><thead><tr><th>Date</th><th>Description</th><th class="r">Hours</th><th class="r">Rate</th><th class="r">Amount</th></tr></thead>
+  <table><thead><tr><th>Date</th><th>Description</th><th class="r">Hours</th><th class="r">Rate</th><th class="r">Amount</th>${balanceTh(d)}</tr></thead>
   <tbody>${tableRows}</tbody></table>
   <div class="totals">
     <div class="tr"><span>Subtotal</span><span>${money(d.subtotal)}</span></div>
+    ${paymentsAppliedRow(d, 'tr')}
     <div class="tr grand"><span>Total Due</span><span>${money(d.total)}</span></div>
   </div>
   ${d.notes ? `<div class="notes"><h4>Notes</h4><p style="margin:0;font-size:10pt;line-height:1.5">${esc(d.notes)}</p></div>` : ''}
@@ -342,6 +389,7 @@ function renderExecutiveSummary(d: InvoiceData): string {
   <div class="section-title">Project Breakdown</div>
   <table><thead><tr><th>Project</th><th class="r">Hours</th><th class="r">Avg Rate</th><th class="r">Subtotal</th></tr></thead>
   <tbody>${projectRows}</tbody></table>
+  ${d.paymentsApplied >= 0.005 ? `<div class="tr" style="display:flex;justify-content:space-between;padding:8px 12px;color:#7c3aed"><span>Retainer / payments applied</span><span>${money(-d.paymentsApplied)}</span></div>` : ''}
   <div class="grand-total"><div><div class="lbl">Total Amount Due</div>${d.dueDate ? `<div style="font-size:9pt;opacity:0.75;margin-top:4px">Due ${esc(d.dueDate)}</div>` : ''}</div><div class="amt">${money(d.total)}</div></div>
   ${d.notes ? `<div class="notes"><div class="lbl">Notes</div><p>${esc(d.notes)}</p></div>` : ''}
   </body></html>`;
@@ -358,6 +406,7 @@ function renderDarkTech(d: InvoiceData): string {
         <td style="text-align:right;font-family:monospace;color:#a78bfa">${hours(i.hours)}h</td>
         <td style="text-align:right;font-family:monospace;color:#9ca3af">${money(i.rate)}</td>
         <td style="text-align:right;font-family:monospace;color:#e2e8f0;font-weight:700">${money(i.amount)}</td>
+        ${balanceTd(d, i, 'font-family:monospace;font-weight:700;')}
       </tr>`
     )
     .join('');
@@ -402,10 +451,11 @@ function renderDarkTech(d: InvoiceData): string {
     ${d.paymentTerms ? `<div class="meta-chip"><div class="lbl">terms</div><div class="val">${esc(d.paymentTerms)}</div></div>` : ''}
     <div class="meta-chip"><div class="lbl">period</div><div class="val">${esc(d.dateRange)}</div></div>
   </div>
-  <table><thead><tr><th>date</th><th>project</th><th style="text-align:right">hours</th><th style="text-align:right">rate</th><th style="text-align:right">amount</th></tr></thead>
+  <table><thead><tr><th>date</th><th>project</th><th style="text-align:right">hours</th><th style="text-align:right">rate</th><th style="text-align:right">amount</th>${balanceTh(d)}</tr></thead>
   <tbody>${rows}</tbody></table>
   <div class="totals">
     <div class="tr"><span style="color:#8b949e">subtotal</span><span>${money(d.subtotal)}</span></div>
+    ${paymentsAppliedRow(d, 'tr')}
     <div class="tr grand"><span>TOTAL_DUE</span><span>${money(d.total)}</span></div>
   </div>
   ${d.notes ? `<div class="notes"><h4>// notes</h4><p>${esc(d.notes)}</p></div>` : ''}
@@ -423,6 +473,7 @@ function renderContractorFormal(d: InvoiceData): string {
         <td class="r">${hours(i.hours)}</td>
         <td class="r">${money(i.rate)}</td>
         <td class="r">${money(i.amount)}</td>
+        ${balanceTd(d, i)}
       </tr>`
     )
     .join('');
@@ -468,10 +519,11 @@ function renderContractorFormal(d: InvoiceData): string {
     <div class="party"><h4>Remit To</h4><p>${addr(d.yourCompany ? `${d.yourCompany}\n${d.yourName}` : d.yourName)}${d.yourAddress ? `<br>${addr(d.yourAddress)}` : ''}${d.yourEmail ? `<br>${esc(d.yourEmail)}` : ''}${d.yourPhone ? `<br>${esc(d.yourPhone)}` : ''}</p></div>
     <div class="party"><h4>Bill To</h4><p>${addr(d.clientName)}${d.clientAddress ? `<br>${addr(d.clientAddress)}` : ''}</p></div>
   </div>
-  <table><thead><tr><th>Date</th><th>Services Rendered</th><th class="r">Hours</th><th class="r">Rate</th><th class="r">Amount</th></tr></thead>
+  <table><thead><tr><th>Date</th><th>Services Rendered</th><th class="r">Hours</th><th class="r">Rate</th><th class="r">Amount</th>${balanceTh(d)}</tr></thead>
   <tbody>${rows}</tbody></table>
   <div class="totals">
     <div class="tr"><span>Subtotal</span><span>${money(d.subtotal)}</span></div>
+    ${paymentsAppliedRow(d, 'tr')}
     <div class="tr grand"><span>TOTAL DUE</span><span>${money(d.total)}</span></div>
   </div>
   ${d.notes ? `<div class="notes"><em>Note: ${esc(d.notes)}</em></div>` : ''}
@@ -496,6 +548,7 @@ function renderTwoColumn(d: InvoiceData): string {
         <td>${esc(i.project)}${i.description ? `<br><span style="font-size:8.5pt;color:#94a3b8">${esc(i.description)}</span>` : ''}</td>
         <td style="text-align:right;white-space:nowrap">${hours(i.hours)}h</td>
         <td style="text-align:right">${money(i.amount)}</td>
+        ${balanceTd(d, i)}
       </tr>`
     )
     .join('');
@@ -549,8 +602,9 @@ function renderTwoColumn(d: InvoiceData): string {
       <div class="info-box"><div class="lbl">Period</div><div class="val">${esc(d.dateRange)}</div></div>
       <div class="info-box"><div class="lbl">Items</div><div class="val">${d.lineItems.length}</div></div>
     </div>
-    <table><thead><tr><th>Date</th><th>Description</th><th style="text-align:right">Hours</th><th style="text-align:right">Amount</th></tr></thead>
+    <table><thead><tr><th>Date</th><th>Description</th><th style="text-align:right">Hours</th><th style="text-align:right">Amount</th>${balanceTh(d)}</tr></thead>
     <tbody>${rows}</tbody></table>
+    ${d.paymentsApplied >= 0.005 ? `<div style="display:flex;justify-content:space-between;padding:8px 4px;font-size:10pt;color:#3b82f6"><span>Retainer / payments applied</span><span>${money(-d.paymentsApplied)}</span></div>` : ''}
     <div class="total-block"><div class="lbl">Total Due${d.dueDate ? `<br><small style="opacity:0.65">Due ${esc(d.dueDate)}</small>` : ''}</div><div class="amt">${money(d.total)}</div></div>
     ${d.notes ? `<div class="notes"><strong>Note:</strong> ${esc(d.notes)}</div>` : ''}
   </div>
@@ -567,6 +621,7 @@ function renderStripeInspired(d: InvoiceData): string {
         <td>${esc(i.project)}${i.description ? `<div style="font-size:9pt;color:#9ca3af;margin-top:2px">${esc(i.description)}</div>` : ''}</td>
         <td style="text-align:right;color:#374151">${hours(i.hours)}h × ${money(i.rate)}</td>
         <td style="text-align:right;font-weight:600;color:#111827">${money(i.amount)}</td>
+        ${balanceTd(d, i, 'font-weight:600;')}
       </tr>`
     )
     .join('');
@@ -610,10 +665,11 @@ function renderStripeInspired(d: InvoiceData): string {
     <div class="adb-right">${d.dueDate ? `<div><span>Due </span><strong>${esc(d.dueDate)}</strong></div>` : ''}${d.paymentTerms ? `<div><span>Terms: </span><strong>${esc(d.paymentTerms)}</strong></div>` : ''}<div><span>Period: </span><strong>${esc(d.dateRange)}</strong></div></div>
   </div>
   <div class="to-section"><div class="lbl">Billed To</div><div class="val">${esc(d.clientName)}</div>${d.clientAddress ? `<div class="addr">${addr(d.clientAddress)}</div>` : ''}</div>
-  <table><thead><tr><th>Date</th><th>Description</th><th style="text-align:right">Details</th><th style="text-align:right">Amount</th></tr></thead>
+  <table><thead><tr><th>Date</th><th>Description</th><th style="text-align:right">Details</th><th style="text-align:right">Amount</th>${balanceTh(d)}</tr></thead>
   <tbody>${rows}</tbody></table>
   <div class="totals">
     <div class="total-line"><span>Subtotal</span><span>${money(d.subtotal)}</span></div>
+    ${paymentsAppliedRow(d, 'total-line')}
     <div class="total-line final"><span>Total Due</span><span>${money(d.total)}</span></div>
   </div>
   ${d.notes ? `<div class="notes"><div class="lbl">Notes</div>${esc(d.notes)}</div>` : ''}
@@ -631,6 +687,7 @@ function renderCreativeColor(d: InvoiceData): string {
         <td style="text-align:right;color:#059669">${hours(i.hours)}h</td>
         <td style="text-align:right;color:#374151">${money(i.rate)}</td>
         <td style="text-align:right;font-weight:700;color:#064e3b">${money(i.amount)}</td>
+        ${balanceTd(d, i, 'font-weight:700;')}
       </tr>`
     )
     .join('');
@@ -679,10 +736,11 @@ function renderCreativeColor(d: InvoiceData): string {
     ${d.paymentTerms ? `<div class="meta-tag"><div class="lbl">Terms</div><div class="val">${esc(d.paymentTerms)}</div></div>` : ''}
     <div class="meta-tag"><div class="lbl">Billing Period</div><div class="val">${esc(d.dateRange)}</div></div>
   </div>
-  <table><thead><tr><th>Date</th><th>Project / Work</th><th style="text-align:right">Hours</th><th style="text-align:right">Rate</th><th style="text-align:right">Amount</th></tr></thead>
+  <table><thead><tr><th>Date</th><th>Project / Work</th><th style="text-align:right">Hours</th><th style="text-align:right">Rate</th><th style="text-align:right">Amount</th>${balanceTh(d)}</tr></thead>
   <tbody>${rows}</tbody></table>
   <div class="totals">
     <div class="tr"><span style="color:#6b7280">Subtotal</span><span>${money(d.subtotal)}</span></div>
+    ${paymentsAppliedRow(d, 'tr')}
     <div class="tr grand"><span>Total Due</span><span>${money(d.total)}</span></div>
   </div>
   ${d.notes ? `<div class="notes"><strong>Notes:</strong> ${esc(d.notes)}</div>` : ''}
@@ -698,7 +756,8 @@ function renderSimpleText(d: InvoiceData): string {
         `<tr><td style="font-family:monospace;font-size:10pt;padding:4px 8px;border-bottom:1px solid #e5e5e5;white-space:nowrap">${esc(i.date)}</td>
          <td style="padding:4px 8px;border-bottom:1px solid #e5e5e5">${esc(i.project)}${i.description ? ` (${esc(i.description)})` : ''}</td>
          <td style="text-align:right;font-family:monospace;padding:4px 8px;border-bottom:1px solid #e5e5e5;white-space:nowrap">${hours(i.hours)}h @ ${money(i.rate)}</td>
-         <td style="text-align:right;font-family:monospace;font-weight:bold;padding:4px 8px;border-bottom:1px solid #e5e5e5">${money(i.amount)}</td></tr>`
+         <td style="text-align:right;font-family:monospace;font-weight:bold;padding:4px 8px;border-bottom:1px solid #e5e5e5">${money(i.amount)}</td>
+         ${balanceTd(d, i, 'font-family:monospace;font-weight:bold;padding:4px 8px;border-bottom:1px solid #e5e5e5;')}</tr>`
     )
     .join('');
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
@@ -735,9 +794,10 @@ function renderSimpleText(d: InvoiceData): string {
     <div class="ft-box"><div class="ft-label">From</div><div class="ft-val">${addr(d.yourCompany ? `${d.yourCompany}\n${d.yourName}` : d.yourName)}${d.yourAddress ? `<br>${addr(d.yourAddress)}` : ''}${d.yourEmail ? `<br>${esc(d.yourEmail)}` : ''}${d.yourPhone ? `<br>${esc(d.yourPhone)}` : ''}</div></div>
     <div class="ft-box"><div class="ft-label">Bill To</div><div class="ft-val">${addr(d.clientName)}${d.clientAddress ? `<br>${addr(d.clientAddress)}` : ''}</div></div>
   </div>
-  <table><thead><tr><th>Date</th><th>Project</th><th style="text-align:right">Hours / Rate</th><th style="text-align:right">Amount</th></tr></thead>
+  <table><thead><tr><th>Date</th><th>Project</th><th style="text-align:right">Hours / Rate</th><th style="text-align:right">Amount</th>${balanceTh(d)}</tr></thead>
   <tbody>${rows}</tbody></table>
   <div class="subtotal-line"><span>Subtotal</span><span style="font-family:monospace">${money(d.subtotal)}</span></div>
+  ${paymentsAppliedRow(d, 'subtotal-line')}
   <div class="total-line"><span>TOTAL DUE</span><span>${money(d.total)}</span></div>
   ${d.notes ? `<div class="notes"><strong>Notes:</strong> ${esc(d.notes)}</div>` : ''}
   </body></html>`;

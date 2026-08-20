@@ -7,21 +7,19 @@
     "build": "tsc && npm run copy-assets",
     "copy-assets": "mkdir -p dist/renderer && cp src/renderer/index.html dist/renderer/index.html && cp node_modules/flatpickr/dist/flatpickr.min.css dist/renderer/flatpickr.min.css && cp node_modules/flatpickr/dist/flatpickr.min.js dist/renderer/flatpickr.min.js",
     "dev": "npm run build && electron .",
-    "postinstall": "electron-rebuild",
     "dist": "npm run build && electron-builder",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage"
   },
   "dependencies": {
-    "better-sqlite3": "^12.6.2",
+    "@libsql/client": "^0.15.15",
+    "dotenv": "^16.6.1",
     "exceljs": "^4.4.0",
     "flatpickr": "^4.6.13",
     "menubar": "^9.5.2"
   },
   "devDependencies": {
-    "@electron/rebuild": "^3.6.0",
-    "@types/better-sqlite3": "^7.6.11",
     "@types/flatpickr": "^3.0.2",
     "@types/jest": "^30.0.0",
     "@types/node": "^22.10.0",

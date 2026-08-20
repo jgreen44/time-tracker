@@ -562,6 +562,126 @@
       cursor: pointer;
     }
     .app-footer a:hover { text-decoration: underline; }
+
+    /* ── Billing view ──────────────────────────────────────────────────── */
+    #billingView { display: none; }
+
+    .billing-summary-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .billing-stat {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 8px 10px;
+      text-align: center;
+    }
+    .billing-stat .stat-label {
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      display: block;
+      margin-bottom: 4px;
+    }
+    .billing-stat .stat-value {
+      font-size: 14px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+    }
+    .billing-stat.earned .stat-value  { color: var(--success); }
+    .billing-stat.received .stat-value { color: var(--accent); }
+    .billing-stat.outstanding .stat-value { color: var(--danger); }
+    .billing-stat.outstanding.settled .stat-value { color: var(--success); }
+    .billing-stat.outstanding.credit .stat-value { color: var(--accent); }
+
+    .payment-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .payment-row:last-child { border-bottom: none; }
+    .payment-row .pay-info { flex: 1; min-width: 0; }
+    .payment-row .pay-amount {
+      font-weight: 700;
+      color: var(--success);
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+    .payment-row .pay-date {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+    .payment-row .pay-note {
+      font-size: 12px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .payment-row .pay-delete {
+      width: auto;
+      padding: 4px 8px;
+      font-size: 11px;
+      background: transparent;
+      color: var(--danger);
+      border: 1px solid var(--danger);
+      border-radius: var(--radius-sm);
+      flex-shrink: 0;
+    }
+    .payment-row .pay-delete:hover { background: var(--danger); color: white; filter: none; }
+
+    /* ── Export history ────────────────────────────────────────────────── */
+    .export-history-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 12px;
+    }
+    .export-history-row:last-child { border-bottom: none; }
+    .export-badge {
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 6px;
+      border-radius: 4px;
+      flex-shrink: 0;
+      text-transform: uppercase;
+    }
+    .export-badge.xlsx { background: #166534; color: #bbf7d0; }
+    .export-badge.pdf  { background: #7c2d12; color: #fed7aa; }
+    .export-history-row .eh-main { flex: 1; min-width: 0; }
+    .export-history-row .eh-project { font-weight: 600; }
+    .export-history-row .eh-range  { color: var(--text-muted); font-size: 11px; }
+    .export-history-row .eh-date   { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
+    #exportHistoryEmpty { color: var(--text-muted); font-size: 12px; text-align: center; padding: 12px 0; }
+
+    /* ── Date presets ──────────────────────────────────────────────────── */
+    .preset-row {
+      display: flex;
+      gap: 5px;
+      margin-bottom: 10px;
+    }
+    .preset-btn {
+      flex: 1;
+      padding: 5px 6px;
+      font-size: 11px;
+      font-weight: 600;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      border-radius: var(--radius-sm);
+    }
+    .preset-btn:hover { filter: none; background: var(--border); color: var(--text); }
+    .preset-btn.active { background: var(--accent); color: white; border-color: var(--accent); }
+    .preset-btn.active:hover { filter: brightness(1.1); background: var(--accent); }
   </style>
 </head>
 <body>
@@ -574,6 +694,7 @@
     <div class="tab-bar">
       <button id="tabTimer" class="tab-btn active">Timer</button>
       <button id="tabHistory" class="tab-btn">History</button>
+      <button id="tabBilling" class="tab-btn">Billing</button>
     </div>
 
     <div class="card">
@@ -639,6 +760,7 @@
     <div class="tab-bar">
       <button id="tabTimer2" class="tab-btn">Timer</button>
       <button id="tabHistory2" class="tab-btn active">History</button>
+      <button id="tabBilling2" class="tab-btn">Billing</button>
     </div>
 
     <button id="addEntryBtn" class="btn-secondary" style="margin-bottom: 12px;">+ Add Entry</button>
@@ -685,6 +807,12 @@
         Last exported through: <strong id="exportLastDate"></strong>
       </div>
       <div class="modal-section">Date Range</div>
+      <div class="preset-row" id="exportPresets">
+        <button class="preset-btn" data-preset="this-week">This Week</button>
+        <button class="preset-btn" data-preset="last-month">Last Month</button>
+        <button class="preset-btn" data-preset="since-last">Since Last</button>
+        <button class="preset-btn active" data-preset="custom">Custom</button>
+      </div>
       <div class="field-2col field">
         <div>
           <label for="exportFromDate">From</label>
@@ -779,6 +907,12 @@
       </div>
 
       <div class="modal-section">Date Range &amp; Project</div>
+      <div class="preset-row" id="invPresets">
+        <button class="preset-btn" data-preset="this-week">This Week</button>
+        <button class="preset-btn" data-preset="last-month">Last Month</button>
+        <button class="preset-btn" data-preset="since-last">Since Last</button>
+        <button class="preset-btn active" data-preset="custom">Custom</button>
+      </div>
       <div class="field-2col field">
         <div>
           <label for="invFromDate">From</label>
@@ -803,6 +937,82 @@
 
       <button id="invoiceExportBtn" class="btn-primary" style="margin-top:4px">Export PDF</button>
       <div class="modal-status" id="invoiceModalStatus"></div>
+    </div>
+  </div>
+
+  <!-- ── Billing View ──────────────────────────────────────────────────── -->
+  <div class="container" id="billingView">
+    <div class="tab-bar">
+      <button id="tabTimer3" class="tab-btn">Timer</button>
+      <button id="tabHistory3" class="tab-btn">History</button>
+      <button id="tabBilling3" class="tab-btn active">Billing</button>
+    </div>
+
+    <!-- Project selector + summary -->
+    <div class="card">
+      <div class="field" style="margin-bottom:8px">
+        <label for="billingProjectSelect">Project</label>
+        <select id="billingProjectSelect"></select>
+      </div>
+      <div class="billing-summary-grid" id="billingSummaryGrid">
+        <div class="billing-stat earned">
+          <span class="stat-label">Earned</span>
+          <span class="stat-value" id="billingEarned">$0.00</span>
+        </div>
+        <div class="billing-stat received">
+          <span class="stat-label">Received</span>
+          <span class="stat-value" id="billingReceived">$0.00</span>
+        </div>
+        <div class="billing-stat outstanding" id="billingOutstandingCard">
+          <span class="stat-label" id="billingOutstandingLabel">Outstanding</span>
+          <span class="stat-value" id="billingOutstanding">$0.00</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Add payment form -->
+    <div class="card" id="addPaymentForm" style="display:none">
+      <h3>Log Payment</h3>
+      <div class="field-2col field">
+        <div>
+          <label for="paymentAmount">Amount ($)</label>
+          <input type="number" id="paymentAmount" min="0" step="0.01" placeholder="0.00" />
+        </div>
+        <div>
+          <label for="paymentDate">Date</label>
+          <input type="datetime-local" id="paymentDate" />
+        </div>
+      </div>
+      <div class="field">
+        <input type="text" id="paymentNote" placeholder="Note (optional, e.g. Invoice #0001)" />
+      </div>
+      <div id="addPaymentStatus" class="entry-save-status"></div>
+      <div class="btn-row">
+        <button id="addPaymentCancelBtn" class="btn-ghost">Cancel</button>
+        <button id="addPaymentSaveBtn" class="btn-primary">Save Payment</button>
+      </div>
+    </div>
+
+    <button id="addPaymentBtn" class="btn-secondary" style="margin-bottom:10px">+ Log Payment Received</button>
+
+    <!-- Payment list -->
+    <div class="card" id="paymentListCard" style="display:none">
+      <h3>Payments Received</h3>
+      <div id="paymentList"></div>
+    </div>
+    <div id="paymentEmpty" style="color:var(--text-muted);font-size:12px;text-align:center;padding:8px 0;display:none">
+      No payments recorded yet.
+    </div>
+
+    <!-- Export history -->
+    <div class="card" style="margin-top:10px">
+      <h3 style="margin-bottom:8px">Export History</h3>
+      <div id="exportHistoryList"></div>
+      <div id="exportHistoryEmpty" style="display:none">No exports yet.</div>
+    </div>
+
+    <div class="app-footer">
+      &copy; <span id="copyrightYear2"></span> <a href="#" id="authorLink2">Jason Green</a>
     </div>
   </div>
 

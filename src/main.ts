@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -45,7 +46,10 @@ const mb = menubar({
 let openPreviewCount = 0;
 let currentPreviewWin: BrowserWindow | null = null;
 
-mb.on('ready', () => {
+mb.on('ready', async () => {
+  // Initialize DB (creates tables + triggers initial cloud sync if Turso is configured)
+  await db.initDb();
+
   const contextMenu = Menu.buildFromTemplate([
     {
       label: 'Quit Time Tracker',
@@ -93,10 +97,10 @@ ipcMain.handle('projects:add', async () => {
   return db.addProject(name, repoPath);
 });
 
-ipcMain.handle('entries:active', () => db.getActiveEntry() ?? null);
+ipcMain.handle('entries:active', async () => (await db.getActiveEntry()) ?? null);
 ipcMain.handle('entries:start', (_event, projectId: number, note?: string) => db.startEntry(projectId, note));
-ipcMain.handle('entries:stop', () => {
-  db.stopActiveEntry();
+ipcMain.handle('entries:stop', async () => {
+  await db.stopActiveEntry();
   return null;
 });
 ipcMain.handle('entries:updateNote', (_event, entryId: number, note: string) => db.updateEntryNote(entryId, note));
@@ -123,7 +127,7 @@ ipcMain.handle('projects:updateRate', (_event, projectId: number, hourlyRate: nu
 );
 ipcMain.handle('app:openExternal', (_event, url: string) => {
   if (url === 'https://www.clearedfinal.com') {
-    shell.openExternal(url);
+    void shell.openExternal(url);
   }
 });
 
@@ -143,7 +147,7 @@ ipcMain.handle('entries:exportExcel', async (_event, params: ExcelExportParams) 
   });
   if (result.canceled || !result.filePath) return null;
 
-  const entries = db.listEntriesInRange(params.rangeFrom, params.rangeTo, params.projectId ?? null);
+  const entries = await db.listEntriesInRange(params.rangeFrom, params.rangeTo, params.projectId ?? null);
   const workbook = new ExcelJS.Workbook();
   workbook.creator = 'Time Tracker';
   workbook.created = new Date();
@@ -179,7 +183,7 @@ ipcMain.handle('entries:exportExcel', async (_event, params: ExcelExportParams) 
   );
 
   await workbook.xlsx.writeFile(result.filePath);
-  db.saveExportRecord(params.rangeFrom, params.rangeTo, result.filePath, 'xlsx');
+  await db.saveExportRecord(params.rangeFrom, params.rangeTo, result.filePath, 'xlsx', params.projectId ?? null);
   return result.filePath;
 });
 
@@ -187,8 +191,8 @@ ipcMain.handle('entries:exportExcel', async (_event, params: ExcelExportParams) 
 
 ipcMain.handle('invoice:getSettings', () => db.getInvoiceSettings());
 
-ipcMain.handle('invoice:saveSettings', (_event, settings: Parameters<typeof db.saveInvoiceSettings>[0]) => {
-  db.saveInvoiceSettings(settings);
+ipcMain.handle('invoice:saveSettings', async (_event, settings: Parameters<typeof db.saveInvoiceSettings>[0]) => {
+  await db.saveInvoiceSettings(settings);
 });
 
 ipcMain.handle('invoice:getNextNumber', () => db.getNextInvoiceNumber());
@@ -207,8 +211,6 @@ interface InvoiceExportParams {
 }
 
 // Maps each preview window to the temp file it currently has loaded.
-// Using a Map instead of a single variable eliminates the race condition where
-// the old window's closed handler deletes the file already owned by the new window.
 const previewTmpPaths = new Map<BrowserWindow, string>();
 
 function writeAndLoadPreview(html: string) {
@@ -218,7 +220,6 @@ function writeAndLoadPreview(html: string) {
   const oldPath = previewTmpPaths.get(currentPreviewWin);
   previewTmpPaths.set(currentPreviewWin, newPath);
   currentPreviewWin.loadURL(`file://${newPath}`);
-  // Delete the previous file only after the new one has finished loading.
   if (oldPath) {
     currentPreviewWin.webContents.once('did-finish-load', () => {
       try { fs.unlinkSync(oldPath); } catch { /* ignore */ }
@@ -228,23 +229,30 @@ function writeAndLoadPreview(html: string) {
 
 type InvoicePreviewData = InvoiceFormParams;
 
-function buildInvoiceDataFromForm(params: InvoicePreviewData): InvoiceData {
+async function buildInvoiceDataFromForm(params: InvoicePreviewData): Promise<InvoiceData> {
   let lineItems = SAMPLE_LINE_ITEMS;
   let dateRange = 'Jul 1 – Jul 31, 2026';
+  let openingBalance = 0;
 
   if (params.rangeFrom && params.rangeTo && params.rangeTo >= params.rangeFrom) {
-    const entries = db.listEntriesInRange(params.rangeFrom, params.rangeTo, params.projectId);
+    const [entries, opening] = await Promise.all([
+      db.listEntriesInRange(params.rangeFrom, params.rangeTo, params.projectId),
+      db.getInvoiceOpeningBalance(params.rangeFrom, params.projectId),
+    ]);
     const real = entriesToLineItems(entries);
-    if (real.length > 0) lineItems = real;
+    if (real.length > 0) {
+      lineItems = real;
+      openingBalance = opening;
+    }
     dateRange = `${formatLocalDate(params.rangeFrom)} – ${formatLocalDate(params.rangeTo)}`;
   }
 
-  return buildInvoiceData(params, lineItems, dateRange);
+  return buildInvoiceData({ ...params, openingBalance }, lineItems, dateRange);
 }
 
-ipcMain.handle('invoice:refreshPreview', (_event, params: InvoicePreviewData) => {
+ipcMain.handle('invoice:refreshPreview', async (_event, params: InvoicePreviewData) => {
   if (!currentPreviewWin || currentPreviewWin.isDestroyed()) return;
-  const data = buildInvoiceDataFromForm(params);
+  const data = await buildInvoiceDataFromForm(params);
   writeAndLoadPreview(buildPreviewHtml(params.templateId, data));
 });
 
@@ -253,8 +261,8 @@ ipcMain.handle('invoice:preview', async (_event, templateId: number, formData?: 
     currentPreviewWin.close();
   }
 
-  const settings = db.getInvoiceSettings();
-  const data = buildInvoiceDataFromForm({
+  const settings = await db.getInvoiceSettings();
+  const data = await buildInvoiceDataFromForm({
     templateId,
     invoiceNumber: formData?.invoiceNumber || 'INV-0001',
     dueDate: formData?.dueDate || 'Net 30',
@@ -285,8 +293,6 @@ ipcMain.handle('invoice:preview', async (_event, templateId: number, formData?: 
     webPreferences: { contextIsolation: true },
   });
 
-  // Register the initial tmp path in the map before setting currentPreviewWin so
-  // writeAndLoadPreview (called by refreshPreview) can safely replace it.
   previewTmpPaths.set(previewWin, tmpPath);
   openPreviewCount++;
   currentPreviewWin = previewWin;
@@ -302,8 +308,11 @@ ipcMain.handle('invoice:preview', async (_event, templateId: number, formData?: 
 });
 
 ipcMain.handle('invoice:export', async (_event, params: InvoiceExportParams) => {
-  const entries = db.listEntriesInRange(params.rangeFrom, params.rangeTo, params.projectId);
-  const settings = db.getInvoiceSettings();
+  const [entries, settings, openingBalance] = await Promise.all([
+    db.listEntriesInRange(params.rangeFrom, params.rangeTo, params.projectId),
+    db.getInvoiceSettings(),
+    db.getInvoiceOpeningBalance(params.rangeFrom, params.projectId),
+  ]);
 
   const lineItems = entriesToLineItems(entries);
   const invoiceData = buildInvoiceData(
@@ -323,6 +332,7 @@ ipcMain.handle('invoice:export', async (_event, params: InvoiceExportParams) => 
       rangeFrom:     params.rangeFrom,
       rangeTo:       params.rangeTo,
       projectId:     params.projectId,
+      openingBalance,
     },
     lineItems,
     `${formatLocalDate(params.rangeFrom)} – ${formatLocalDate(params.rangeTo)}`
@@ -365,24 +375,50 @@ ipcMain.handle('invoice:export', async (_event, params: InvoiceExportParams) => 
 
   fs.writeFileSync(result.filePath, pdfBuffer);
 
-  db.saveInvoice({
-    invoiceNumber: params.invoiceNumber,
-    clientName: params.clientName,
-    clientAddress: params.clientAddress,
-    dueDate: params.dueDate,
-    paymentTerms: params.paymentTerms,
-    notes: params.notes,
-    projectId: params.projectId,
-    rangeFrom: params.rangeFrom,
-    rangeTo: params.rangeTo,
-    templateId: params.templateId,
-    filePath: result.filePath,
-  });
-  db.saveExportRecord(params.rangeFrom, params.rangeTo, result.filePath, 'pdf');
+  await Promise.all([
+    db.saveInvoice({
+      invoiceNumber: params.invoiceNumber,
+      clientName: params.clientName,
+      clientAddress: params.clientAddress,
+      dueDate: params.dueDate,
+      paymentTerms: params.paymentTerms,
+      notes: params.notes,
+      projectId: params.projectId,
+      rangeFrom: params.rangeFrom,
+      rangeTo: params.rangeTo,
+      templateId: params.templateId,
+      filePath: result.filePath,
+    }),
+    db.saveExportRecord(params.rangeFrom, params.rangeTo, result.filePath, 'pdf'),
+  ]);
 
   return result.filePath;
 });
 
-app.on('before-quit', () => {
-  db.closeDb();
+// ── Payments ──────────────────────────────────────────────────────────────────
+
+ipcMain.handle('payments:list', (_event, projectId: number) => db.listPayments(projectId));
+
+ipcMain.handle(
+  'payments:add',
+  (_event, projectId: number, amount: number, receivedAt: number, note: string | null, invoiceId?: number | null) =>
+    db.addPayment(projectId, amount, receivedAt, note, invoiceId)
+);
+
+ipcMain.handle('payments:delete', (_event, paymentId: number) => db.deletePayment(paymentId));
+
+ipcMain.handle('projects:billingSummary', (_event, projectId: number) =>
+  db.getProjectBillingSummary(projectId)
+);
+
+ipcMain.handle('export-history:list', () => db.listExportHistory());
+
+app.on('before-quit', (event) => {
+  event.preventDefault();
+  db.closeDb()
+    .catch(() => { /* ignore errors during shutdown */ })
+    .finally(() => {
+      app.removeAllListeners('before-quit');
+      app.quit();
+    });
 });

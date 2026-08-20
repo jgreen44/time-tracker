@@ -102,6 +102,38 @@ interface TimeTrackerApi {
     rangeTo: number;
     projectId: number | null;
   }): Promise<string | null>;
+  listPayments(projectId: number): Promise<{
+    id: number;
+    project_id: number;
+    amount: number;
+    received_at: number;
+    note: string | null;
+    invoice_id: number | null;
+  }[]>;
+  addPayment(
+    projectId: number,
+    amount: number,
+    receivedAt: number,
+    note: string | null,
+    invoiceId?: number | null
+  ): Promise<void>;
+  deletePayment(paymentId: number): Promise<void>;
+  getProjectBillingSummary(projectId: number): Promise<{
+    totalEarned: number;
+    totalPaid: number;
+    outstanding: number;
+  }>;
+  listExportHistory(): Promise<{
+    id: number;
+    exported_at: number;
+    range_from: number;
+    range_to: number;
+    file_path: string | null;
+    format: string;
+    project_id: number | null;
+    project_name: string | null;
+    invoice_number: string | null;
+  }[]>;
 }
 
 interface Window {

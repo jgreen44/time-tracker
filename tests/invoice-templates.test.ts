@@ -11,7 +11,7 @@ import {
   InvoiceLineItem,
 } from '../src/invoice-templates';
 
-// ── Shared fixtures ──────────────────────────────────────────────────────────
+// ── Shared fixtures ───────────────────────────────────────────────────────────
 
 const SAMPLE_ITEMS: InvoiceLineItem[] = [
   { project: 'Web Dev', date: '7/1/2026', description: 'Frontend work', hours: 4.5, rate: 150, amount: 675 },
@@ -40,11 +40,13 @@ function makeData(overrides: Partial<InvoiceData> = {}): InvoiceData {
     lineItems: SAMPLE_ITEMS,
     subtotal: SUBTOTAL,
     total: SUBTOTAL,
+    openingBalance: 0,
+    paymentsApplied: 0,
     ...overrides,
   };
 }
 
-// ── Registry ─────────────────────────────────────────────────────────────────
+// ── Registry ──────────────────────────────────────────────────────────────────
 
 describe('invoiceTemplates registry', () => {
   it('exports exactly 10 templates', () => {
@@ -52,8 +54,7 @@ describe('invoiceTemplates registry', () => {
   });
 
   it('has unique IDs from 1 to 10', () => {
-    const ids = invoiceTemplates.map((t) => t.id);
-    expect(ids).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    expect(invoiceTemplates.map((t) => t.id)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
   });
 
   it('every template has a non-empty name and description', () => {
@@ -67,6 +68,11 @@ describe('invoiceTemplates registry', () => {
     for (const t of invoiceTemplates) {
       expect(typeof t.render).toBe('function');
     }
+  });
+
+  it('template names are all unique', () => {
+    const names = invoiceTemplates.map((t) => t.name);
+    expect(new Set(names).size).toBe(10);
   });
 });
 
@@ -97,24 +103,35 @@ describe.each(invoiceTemplates)('Template $id: $name', (template) => {
   });
 
   it('includes the invoice number', () => {
-    const html = template.render(data);
-    expect(html).toContain('INV-0042');
+    expect(template.render(data)).toContain('INV-0042');
   });
 
   it('includes the client name', () => {
-    const html = template.render(data);
-    expect(html).toContain('Acme Corp');
+    expect(template.render(data)).toContain('Acme Corp');
   });
 
   it('includes the total amount', () => {
-    const html = template.render(data);
-    // $1750.00
-    expect(html).toContain('1750.00');
+    expect(template.render(data)).toContain('1750.00');
   });
 
   it('includes your company name', () => {
-    const html = template.render(data);
-    expect(html).toContain('Smith Consulting LLC');
+    expect(template.render(data)).toContain('Smith Consulting LLC');
+  });
+
+  it('includes your name', () => {
+    expect(template.render(data)).toContain('Jane Smith');
+  });
+
+  it('includes your email', () => {
+    expect(template.render(data)).toContain('jane@smith.dev');
+  });
+
+  it('includes your phone', () => {
+    expect(template.render(data)).toContain('(555) 867-5309');
+  });
+
+  it('includes your address', () => {
+    expect(template.render(data)).toContain('123 Main St');
   });
 
   it('HTML-escapes dangerous characters in user data', () => {
@@ -144,24 +161,31 @@ describe.each(invoiceTemplates)('Template $id: $name', (template) => {
   it('renders with zero line items', () => {
     const noItems = makeData({ lineItems: [], subtotal: 0, total: 0 });
     expect(() => template.render(noItems)).not.toThrow();
-    const html = template.render(noItems);
-    expect(html).toContain('0.00');
+    expect(template.render(noItems)).toContain('0.00');
   });
 
   it('renders with a single line item', () => {
-    const oneItem = makeData({
-      lineItems: [SAMPLE_ITEMS[0]],
-      subtotal: 675,
-      total: 675,
-    });
-    const html = template.render(oneItem);
-    expect(html).toContain('675.00');
+    const oneItem = makeData({ lineItems: [SAMPLE_ITEMS[0]], subtotal: 675, total: 675 });
+    expect(template.render(oneItem)).toContain('675.00');
   });
 
-  it('renders multi-project data', () => {
-    const html = template.render(data);
-    // Ensure no crash with mixed projects; totals should appear
-    expect(html).toContain('1750.00');
+  it('renders multi-project data without crashing', () => {
+    expect(() => template.render(data)).not.toThrow();
+    expect(template.render(data)).toContain('1750.00');
+  });
+
+  it('different invoice numbers produce different output', () => {
+    const html1 = template.render(makeData({ invoiceNumber: 'INV-0001' }));
+    const html2 = template.render(makeData({ invoiceNumber: 'INV-9999' }));
+    expect(html1).not.toBe(html2);
+  });
+
+  it('renders the due date', () => {
+    expect(template.render(data)).toContain('Aug 4, 2026');
+  });
+
+  it('renders the date range', () => {
+    expect(template.render(data)).toContain('Jul 1');
   });
 });
 
@@ -171,13 +195,29 @@ describe('HTML escaping in templates', () => {
   const template = invoiceTemplates[0]; // Classic Minimal
 
   it.each([
-    ['& ampersand', 'AT&T', '&amp;'],
-    ['< less-than', '1 < 2', '&lt;'],
-    ['> greater-than', '2 > 1', '&gt;'],
-    ['" double-quote in company', 'Say "Hello"', '&quot;'],
+    ['& ampersand',        'AT&T',        '&amp;'],
+    ['< less-than',        '1 < 2',       '&lt;'],
+    ['> greater-than',     '2 > 1',       '&gt;'],
+    ['" double-quote',     'Say "Hello"', '&quot;'],
   ])('escapes %s', (_desc, input, expected) => {
     const html = template.render(makeData({ clientName: input }));
     expect(html).toContain(expected);
+  });
+
+  it('escapes XSS in yourName', () => {
+    const html = template.render(makeData({ yourName: '<img onerror=alert(1)>' }));
+    expect(html).not.toContain('<img onerror');
+    expect(html).toContain('&lt;img');
+  });
+
+  it('escapes XSS in yourAddress', () => {
+    const html = template.render(makeData({ yourAddress: '<script>evil()</script>' }));
+    expect(html).not.toContain('<script>evil');
+  });
+
+  it('escapes XSS in notes', () => {
+    const html = template.render(makeData({ notes: '"><script>x</script>' }));
+    expect(html).not.toContain('<script>x</script>');
   });
 });
 
@@ -185,21 +225,17 @@ describe('HTML escaping in templates', () => {
 
 describe('address line-break handling', () => {
   it('converts newlines to <br> in yourAddress', () => {
-    const html = invoiceTemplates[0].render(
-      makeData({ yourAddress: 'Line1\nLine2\nLine3' })
-    );
+    const html = invoiceTemplates[0].render(makeData({ yourAddress: 'Line1\nLine2\nLine3' }));
     expect(html).toContain('<br>');
   });
 
   it('converts newlines to <br> in clientAddress', () => {
-    const html = invoiceTemplates[0].render(
-      makeData({ clientAddress: '456 Ave\nSuite 100' })
-    );
+    const html = invoiceTemplates[0].render(makeData({ clientAddress: '456 Ave\nSuite 100' }));
     expect(html).toContain('<br>');
   });
 });
 
-// ── Totals calculation reflected in output ───────────────────────────────────
+// ── Monetary formatting ───────────────────────────────────────────────────────
 
 describe('monetary values in output', () => {
   it('formats subtotal as $N.NN', () => {
@@ -215,5 +251,72 @@ describe('monetary values in output', () => {
   it('handles large amounts', () => {
     const html = invoiceTemplates[0].render(makeData({ subtotal: 99999.99, total: 99999.99 }));
     expect(html).toContain('99999.99');
+  });
+
+  it('handles zero total', () => {
+    const html = invoiceTemplates[0].render(makeData({ lineItems: [], subtotal: 0, total: 0 }));
+    expect(html).toContain('0.00');
+  });
+
+  it('per-item amounts are included', () => {
+    const html = invoiceTemplates[0].render(makeData());
+    expect(html).toContain('675.00'); // first item
+    expect(html).toContain('450.00'); // second item
+  });
+
+  it('shows a running balance and retainer line when opening credit exists', () => {
+    const credited = makeData({
+      openingBalance: -350,
+      paymentsApplied: 350,
+      total: 1400,
+      lineItems: [
+        { project: '', date: '', description: 'Retainer / payments applied', hours: 0, rate: 0, amount: -350, balance: -350, isAdjustment: true },
+        { ...SAMPLE_ITEMS[0], balance: 325 },
+        { ...SAMPLE_ITEMS[1], balance: 775 },
+        { ...SAMPLE_ITEMS[2], balance: 1400 },
+      ],
+    });
+    const html = invoiceTemplates[0].render(credited);
+    expect(html).toContain('Balance');
+    expect(html).toContain('Retainer / payments applied');
+    expect(html).toContain('-$350.00');
+  });
+
+  it.each(invoiceTemplates)('Template $id ($name) renders a retainer credit without throwing', (template) => {
+    const credited = makeData({
+      openingBalance: -350,
+      paymentsApplied: 350,
+      total: 1400,
+      lineItems: [
+        { project: '', date: '', description: 'Retainer / payments applied', hours: 0, rate: 0, amount: -350, balance: -350, isAdjustment: true },
+        { ...SAMPLE_ITEMS[0], balance: 325 },
+      ],
+    });
+    expect(() => template.render(credited)).not.toThrow();
+    expect(template.render(credited)).toContain('Retainer / payments applied');
+  });
+});
+
+// ── Contact info completeness ─────────────────────────────────────────────────
+
+describe('contact information in all templates', () => {
+  it.each(invoiceTemplates)('Template $id ($name) includes yourEmail', (template) => {
+    const html = template.render(makeData());
+    expect(html).toContain('jane@smith.dev');
+  });
+
+  it.each(invoiceTemplates)('Template $id ($name) includes yourPhone', (template) => {
+    const html = template.render(makeData());
+    expect(html).toContain('(555) 867-5309');
+  });
+
+  it.each(invoiceTemplates)('Template $id ($name) includes yourAddress snippet', (template) => {
+    const html = template.render(makeData());
+    expect(html).toContain('123 Main St');
+  });
+
+  it.each(invoiceTemplates)('Template $id ($name) renders gracefully with no contact info', (template) => {
+    const noContact = makeData({ yourEmail: '', yourPhone: '', yourAddress: '' });
+    expect(() => template.render(noContact)).not.toThrow();
   });
 });

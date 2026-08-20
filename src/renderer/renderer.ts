@@ -40,11 +40,38 @@ const earningsWeekEl = document.getElementById('earningsWeek') as HTMLSpanElemen
 const earningsAllTimeEl = document.getElementById('earningsAllTime') as HTMLSpanElement;
 const tabTimer = document.getElementById('tabTimer') as HTMLButtonElement;
 const tabHistory = document.getElementById('tabHistory') as HTMLButtonElement;
+const tabBilling = document.getElementById('tabBilling') as HTMLButtonElement;
 const tabTimer2 = document.getElementById('tabTimer2') as HTMLButtonElement;
 const tabHistory2 = document.getElementById('tabHistory2') as HTMLButtonElement;
+const tabBilling2 = document.getElementById('tabBilling2') as HTMLButtonElement;
+const tabTimer3 = document.getElementById('tabTimer3') as HTMLButtonElement;
+const tabHistory3 = document.getElementById('tabHistory3') as HTMLButtonElement;
+const tabBilling3 = document.getElementById('tabBilling3') as HTMLButtonElement;
 const startStopLabel = document.getElementById('startStopLabel') as HTMLSpanElement;
 const mainView = document.getElementById('mainView') as HTMLDivElement;
 const historyView = document.getElementById('historyView') as HTMLDivElement;
+const billingView = document.getElementById('billingView') as HTMLDivElement;
+
+// ── Billing view elements ─────────────────────────────────────────────────────
+const billingProjectSelect = document.getElementById('billingProjectSelect') as HTMLSelectElement;
+const billingEarnedEl = document.getElementById('billingEarned') as HTMLSpanElement;
+const billingReceivedEl = document.getElementById('billingReceived') as HTMLSpanElement;
+const billingOutstandingEl = document.getElementById('billingOutstanding') as HTMLSpanElement;
+const billingOutstandingLabel = document.getElementById('billingOutstandingLabel') as HTMLSpanElement;
+const billingOutstandingCard = document.getElementById('billingOutstandingCard') as HTMLDivElement;
+const addPaymentBtn = document.getElementById('addPaymentBtn') as HTMLButtonElement;
+const addPaymentForm = document.getElementById('addPaymentForm') as HTMLDivElement;
+const paymentAmount = document.getElementById('paymentAmount') as HTMLInputElement;
+const paymentDate = document.getElementById('paymentDate') as HTMLInputElement;
+const paymentNote = document.getElementById('paymentNote') as HTMLInputElement;
+const addPaymentStatus = document.getElementById('addPaymentStatus') as HTMLDivElement;
+const addPaymentCancelBtn = document.getElementById('addPaymentCancelBtn') as HTMLButtonElement;
+const addPaymentSaveBtn = document.getElementById('addPaymentSaveBtn') as HTMLButtonElement;
+const paymentList = document.getElementById('paymentList') as HTMLDivElement;
+const paymentListCard = document.getElementById('paymentListCard') as HTMLDivElement;
+const paymentEmpty = document.getElementById('paymentEmpty') as HTMLDivElement;
+const exportHistoryList = document.getElementById('exportHistoryList') as HTMLDivElement;
+const exportHistoryEmpty = document.getElementById('exportHistoryEmpty') as HTMLDivElement;
 const historyListEl = document.getElementById('historyList') as HTMLDivElement;
 const loadMoreBtn = document.getElementById('loadMoreBtn') as HTMLButtonElement;
 const earningsProjectSelect = document.getElementById('earningsProjectSelect') as HTMLSelectElement;
@@ -209,6 +236,19 @@ async function refreshProjects() {
     earningsProjectSelect.appendChild(option);
   }
   earningsProjectSelect.value = previousEarningsSelection;
+
+  // Keep billing project select in sync (no "All Projects" option here)
+  const previousBillingSelection = billingProjectSelect.value;
+  billingProjectSelect.innerHTML = '';
+  for (const project of projects) {
+    const option = document.createElement('option');
+    option.value = String(project.id);
+    option.textContent = project.name;
+    billingProjectSelect.appendChild(option);
+  }
+  if (previousBillingSelection && projects.some((p) => String(p.id) === previousBillingSelection)) {
+    billingProjectSelect.value = previousBillingSelection;
+  }
 }
 
 async function refreshSummary() {
@@ -496,25 +536,41 @@ loadMoreBtn.addEventListener('click', async () => {
   loadMoreBtn.style.display = historyOffset < historyTotalCount ? 'block' : 'none';
 });
 
+const allTimerTabs   = [tabTimer,   tabTimer2,   tabTimer3];
+const allHistoryTabs = [tabHistory, tabHistory2, tabHistory3];
+const allBillingTabs = [tabBilling, tabBilling2, tabBilling3];
+
+function setActiveTab(active: HTMLButtonElement[]) {
+  [...allTimerTabs, ...allHistoryTabs, ...allBillingTabs].forEach((t) => t.classList.remove('active'));
+  active.forEach((t) => t.classList.add('active'));
+}
+
 async function showHistoryView() {
   mainView.style.display = 'none';
+  billingView.style.display = 'none';
   historyView.style.display = 'block';
-  [tabTimer, tabTimer2].forEach((t) => t.classList.remove('active'));
-  [tabHistory, tabHistory2].forEach((t) => t.classList.add('active'));
+  setActiveTab(allHistoryTabs);
   await refreshHistory();
 }
 
 function showTimerView() {
   historyView.style.display = 'none';
+  billingView.style.display = 'none';
   mainView.style.display = 'block';
-  [tabHistory, tabHistory2].forEach((t) => t.classList.remove('active'));
-  [tabTimer, tabTimer2].forEach((t) => t.classList.add('active'));
+  setActiveTab(allTimerTabs);
 }
 
-tabTimer.addEventListener('click', showTimerView);
-tabTimer2.addEventListener('click', showTimerView);
-tabHistory.addEventListener('click', showHistoryView);
-tabHistory2.addEventListener('click', showHistoryView);
+async function showBillingView() {
+  mainView.style.display = 'none';
+  historyView.style.display = 'none';
+  billingView.style.display = 'block';
+  setActiveTab(allBillingTabs);
+  await refreshBillingView();
+}
+
+allTimerTabs.forEach((t) => t.addEventListener('click', showTimerView));
+allHistoryTabs.forEach((t) => t.addEventListener('click', showHistoryView));
+allBillingTabs.forEach((t) => t.addEventListener('click', showBillingView));
 
 function resetAddEntryForm() {
   addEntryForm.style.display = 'none';
@@ -672,6 +728,194 @@ invoiceBtn.addEventListener('click', async () => {
   await openInvoiceModal();
 });
 
+// ── Billing view ──────────────────────────────────────────────────────────────
+
+const copyrightYearEl2 = document.getElementById('copyrightYear2') as HTMLSpanElement;
+const authorLink2 = document.getElementById('authorLink2') as HTMLAnchorElement;
+copyrightYearEl2.textContent = String(new Date().getFullYear());
+authorLink2.addEventListener('click', (e) => {
+  e.preventDefault();
+  window.api.openExternal('https://www.clearedfinal.com');
+});
+
+async function refreshBillingProject() {
+  const projectId = Number(billingProjectSelect.value);
+  if (!projectId) return;
+
+  const [summary, payments] = await Promise.all([
+    window.api.getProjectBillingSummary(projectId),
+    window.api.listPayments(projectId),
+  ]);
+
+  billingEarnedEl.textContent = formatMoney(summary.totalEarned);
+  billingReceivedEl.textContent = formatMoney(summary.totalPaid);
+
+  const owed = summary.outstanding;
+  billingOutstandingCard.classList.toggle('settled', owed === 0);
+  billingOutstandingCard.classList.toggle('credit', owed < 0);
+  if (owed > 0) {
+    billingOutstandingLabel.textContent = 'Outstanding';
+    billingOutstandingEl.textContent = formatMoney(owed);
+  } else if (owed < 0) {
+    billingOutstandingLabel.textContent = 'Credit Owed';
+    billingOutstandingEl.textContent = formatMoney(Math.abs(owed));
+  } else {
+    billingOutstandingLabel.textContent = 'Settled';
+    billingOutstandingEl.textContent = formatMoney(0);
+  }
+
+  paymentList.innerHTML = '';
+  if (payments.length === 0) {
+    paymentListCard.style.display = 'none';
+    paymentEmpty.style.display = 'block';
+  } else {
+    paymentEmpty.style.display = 'none';
+    paymentListCard.style.display = 'block';
+    for (const p of payments) {
+      const row = document.createElement('div');
+      row.className = 'payment-row';
+
+      const info = document.createElement('div');
+      info.className = 'pay-info';
+      const dateSpan = document.createElement('div');
+      dateSpan.className = 'pay-date';
+      dateSpan.textContent = new Date(p.received_at).toLocaleDateString();
+      const noteSpan = document.createElement('div');
+      noteSpan.className = 'pay-note';
+      noteSpan.textContent = p.note ?? '';
+      info.appendChild(dateSpan);
+      if (p.note) info.appendChild(noteSpan);
+
+      const amountSpan = document.createElement('span');
+      amountSpan.className = 'pay-amount';
+      amountSpan.textContent = formatMoney(p.amount);
+
+      const delBtn = document.createElement('button');
+      delBtn.className = 'pay-delete';
+      delBtn.textContent = '✕';
+      delBtn.title = 'Delete payment';
+      delBtn.addEventListener('click', async () => {
+        if (!confirm(`Delete payment of ${formatMoney(p.amount)}?`)) return;
+        await window.api.deletePayment(p.id);
+        await refreshBillingProject();
+      });
+
+      row.appendChild(info);
+      row.appendChild(amountSpan);
+      row.appendChild(delBtn);
+      paymentList.appendChild(row);
+    }
+  }
+}
+
+async function refreshExportHistory() {
+  const history = await window.api.listExportHistory();
+  exportHistoryList.innerHTML = '';
+  if (history.length === 0) {
+    exportHistoryEmpty.style.display = 'block';
+    return;
+  }
+  exportHistoryEmpty.style.display = 'none';
+  for (const rec of history) {
+    const row = document.createElement('div');
+    row.className = 'export-history-row';
+
+    const badge = document.createElement('span');
+    badge.className = `export-badge ${rec.format}`;
+    badge.textContent = rec.format.toUpperCase();
+
+    const main = document.createElement('div');
+    main.className = 'eh-main';
+
+    const proj = document.createElement('div');
+    proj.className = 'eh-project';
+    const label = rec.format === 'pdf' && rec.invoice_number
+      ? `${rec.project_name ?? 'All Projects'} · ${rec.invoice_number}`
+      : (rec.project_name ?? 'All Projects');
+    proj.textContent = label;
+
+    const range = document.createElement('div');
+    range.className = 'eh-range';
+    range.textContent = `${new Date(rec.range_from).toLocaleDateString()} – ${new Date(rec.range_to).toLocaleDateString()}`;
+
+    main.appendChild(proj);
+    main.appendChild(range);
+
+    const dateEl = document.createElement('div');
+    dateEl.className = 'eh-date';
+    dateEl.textContent = new Date(rec.exported_at).toLocaleDateString();
+
+    row.appendChild(badge);
+    row.appendChild(main);
+    row.appendChild(dateEl);
+    exportHistoryList.appendChild(row);
+  }
+}
+
+async function refreshBillingView() {
+  const prev = billingProjectSelect.value;
+  billingProjectSelect.innerHTML = '';
+  for (const project of projects) {
+    const option = document.createElement('option');
+    option.value = String(project.id);
+    option.textContent = project.name;
+    billingProjectSelect.appendChild(option);
+  }
+  if (prev && projects.some((p) => String(p.id) === prev)) {
+    billingProjectSelect.value = prev;
+  }
+  await Promise.all([refreshBillingProject(), refreshExportHistory()]);
+}
+
+billingProjectSelect.addEventListener('change', () => {
+  void refreshBillingProject();
+});
+
+addPaymentBtn.addEventListener('click', () => {
+  const now = new Date();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  paymentDate.value = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`;
+  paymentAmount.value = '';
+  paymentNote.value = '';
+  addPaymentStatus.textContent = '';
+  addPaymentForm.style.display = 'block';
+  addPaymentBtn.style.display = 'none';
+});
+
+addPaymentCancelBtn.addEventListener('click', () => {
+  addPaymentForm.style.display = 'none';
+  addPaymentBtn.style.display = 'block';
+});
+
+addPaymentSaveBtn.addEventListener('click', async () => {
+  const projectId = Number(billingProjectSelect.value);
+  const amount = parseFloat(paymentAmount.value);
+  const dateMs = fromDatetimeLocalValue(paymentDate.value);
+
+  if (!projectId) {
+    addPaymentStatus.textContent = 'Select a project first.';
+    addPaymentStatus.style.color = 'var(--danger)';
+    return;
+  }
+  if (!Number.isFinite(amount) || amount <= 0) {
+    addPaymentStatus.textContent = 'Enter a valid amount.';
+    addPaymentStatus.style.color = 'var(--danger)';
+    return;
+  }
+  if (dateMs === null) {
+    addPaymentStatus.textContent = 'Enter a valid date.';
+    addPaymentStatus.style.color = 'var(--danger)';
+    return;
+  }
+
+  addPaymentSaveBtn.disabled = true;
+  await window.api.addPayment(projectId, amount, dateMs, paymentNote.value.trim() || null);
+  addPaymentForm.style.display = 'none';
+  addPaymentBtn.style.display = 'block';
+  addPaymentSaveBtn.disabled = false;
+  await refreshBillingProject();
+});
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function toDateInputValue(ms: number): string {
@@ -715,6 +959,86 @@ function setFpDate(fp: FpInstance, ms: number | null) {
   fp.setDate(new Date(ms), false);
 }
 
+// ── Date presets ──────────────────────────────────────────────────────────────
+
+function startOfWeekMs(): number {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() - d.getDay()); // Sunday
+  return d.getTime();
+}
+
+function lastMonthRange(): { from: number; to: number } {
+  const now = new Date();
+  const from = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const to = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
+  return { from: from.getTime(), to: to.getTime() };
+}
+
+let exportLastRange: { range_from: number; range_to: number } | null = null;
+let invLastRange:    { range_from: number; range_to: number } | null = null;
+
+function applyExportPreset(preset: string) {
+  document.querySelectorAll('#exportPresets .preset-btn').forEach((b) => b.classList.remove('active'));
+  const btn = document.querySelector(`#exportPresets [data-preset="${preset}"]`);
+  btn?.classList.add('active');
+
+  const now = Date.now();
+  if (preset === 'this-week') {
+    setFpDate(fpExportFrom, startOfWeekMs());
+    setFpDate(fpExportTo, now);
+  } else if (preset === 'last-month') {
+    const { from, to } = lastMonthRange();
+    setFpDate(fpExportFrom, from);
+    setFpDate(fpExportTo, to);
+  } else if (preset === 'since-last') {
+    if (exportLastRange) {
+      setFpDate(fpExportFrom, exportLastRange.range_to + 86_400_000);
+    }
+    setFpDate(fpExportTo, now);
+  }
+  // 'custom' → user picks manually, do nothing to pickers
+}
+
+function applyInvPreset(preset: string) {
+  document.querySelectorAll('#invPresets .preset-btn').forEach((b) => b.classList.remove('active'));
+  const btn = document.querySelector(`#invPresets [data-preset="${preset}"]`);
+  btn?.classList.add('active');
+
+  const now = Date.now();
+  if (preset === 'this-week') {
+    setFpDate(fpInvFrom, startOfWeekMs());
+    setFpDate(fpInvTo, now);
+  } else if (preset === 'last-month') {
+    const { from, to } = lastMonthRange();
+    setFpDate(fpInvFrom, from);
+    setFpDate(fpInvTo, to);
+  } else if (preset === 'since-last') {
+    if (invLastRange) {
+      setFpDate(fpInvFrom, invLastRange.range_to + 86_400_000);
+    }
+    setFpDate(fpInvTo, now);
+  }
+}
+
+document.querySelectorAll('#exportPresets .preset-btn').forEach((btn) => {
+  btn.addEventListener('click', () => applyExportPreset((btn as HTMLElement).dataset.preset ?? 'custom'));
+});
+
+document.querySelectorAll('#invPresets .preset-btn').forEach((btn) => {
+  btn.addEventListener('click', () => applyInvPreset((btn as HTMLElement).dataset.preset ?? 'custom'));
+});
+
+// Mark "Custom" when user manually touches the flatpickr pickers
+fpExportFrom.config.onChange.push(() => {
+  document.querySelectorAll('#exportPresets .preset-btn').forEach((b) => b.classList.remove('active'));
+  document.querySelector('#exportPresets [data-preset="custom"]')?.classList.add('active');
+});
+fpExportTo.config.onChange.push(() => {
+  document.querySelectorAll('#exportPresets .preset-btn').forEach((b) => b.classList.remove('active'));
+  document.querySelector('#exportPresets [data-preset="custom"]')?.classList.add('active');
+});
+
 function populateProjectDropdown(select: HTMLSelectElement) {
   const prev = select.value;
   select.innerHTML = '<option value="">All Projects</option>';
@@ -733,11 +1057,16 @@ async function openExportModal() {
   exportModalStatus.textContent = '';
   populateProjectDropdown(exportProjectFilter);
 
+  // reset to "Custom" preset on open
+  document.querySelectorAll('#exportPresets .preset-btn').forEach((b) => b.classList.remove('active'));
+  document.querySelector('#exportPresets [data-preset="custom"]')?.classList.add('active');
+
   const lastRange = await window.api.getLastExportRange();
+  exportLastRange = lastRange;
   if (lastRange) {
     exportLastHint.style.display = 'block';
     exportLastDateEl.textContent = new Date(lastRange.range_to).toLocaleDateString();
-    setFpDate(fpExportFrom, lastRange.range_to + 86_400_000); // day after last export
+    setFpDate(fpExportFrom, lastRange.range_to + 86_400_000);
   } else {
     exportLastHint.style.display = 'none';
     setFpDate(fpExportFrom, null);
@@ -869,7 +1198,11 @@ async function openInvoiceModal() {
     invProjectFilter.value = String(settings.last_project_id);
   }
 
-  // default date range same logic as export modal
+  // reset to "Custom" preset on open
+  document.querySelectorAll('#invPresets .preset-btn').forEach((b) => b.classList.remove('active'));
+  document.querySelector('#invPresets [data-preset="custom"]')?.classList.add('active');
+
+  invLastRange = lastRange;
   if (lastRange) {
     setFpDate(fpInvFrom, lastRange.range_to + 86_400_000);
   } else {

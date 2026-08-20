@@ -12,3 +12,8 @@ out/
 
 #Ignore cursor AI rules
 .cursor/rules/codacy.mdc
+
+# Local environment – ALL variants are ignored except .env.example
+.env
+.env.*
+!.env.example

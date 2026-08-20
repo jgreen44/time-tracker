@@ -42,4 +42,10 @@ contextBridge.exposeInMainWorld('api', {
     paymentTerms: string; clientName: string; clientAddress: string;
     notes: string; rangeFrom: number; rangeTo: number; projectId: number | null;
   }) => ipcRenderer.invoke('invoice:export', params),
+  listPayments: (projectId: number) => ipcRenderer.invoke('payments:list', projectId),
+  addPayment: (projectId: number, amount: number, receivedAt: number, note: string | null, invoiceId?: number | null) =>
+    ipcRenderer.invoke('payments:add', projectId, amount, receivedAt, note, invoiceId),
+  deletePayment: (paymentId: number) => ipcRenderer.invoke('payments:delete', paymentId),
+  getProjectBillingSummary: (projectId: number) => ipcRenderer.invoke('projects:billingSummary', projectId),
+  listExportHistory: () => ipcRenderer.invoke('export-history:list'),
 });

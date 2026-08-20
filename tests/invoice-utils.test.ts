@@ -12,6 +12,7 @@ import {
   buildPreviewHtml,
   findTemplate,
   entriesToLineItems,
+  withRunningBalances,
   SAMPLE_LINE_ITEMS,
   PREVIEW_SCREEN_CSS,
   InvoiceFormParams,
@@ -236,6 +237,70 @@ describe('buildInvoiceData', () => {
   it('handles null rangeFrom/rangeTo (preview mode)', () => {
     const data = buildInvoiceData(makeParams({ rangeFrom: null, rangeTo: null }), [], 'r');
     expect(data.subtotal).toBe(0);
+  });
+
+  it('applies a retainer as a negative opening line and reduces total due', () => {
+    const items = [
+      { project: 'A', date: '8/1/2026', description: 'First', hours: 2, rate: 100, amount: 200 },
+      { project: 'A', date: '8/2/2026', description: 'Second', hours: 3, rate: 100, amount: 300 },
+      { project: 'A', date: '8/3/2026', description: 'Third', hours: 4, rate: 100, amount: 400 },
+    ];
+    const data = buildInvoiceData(makeParams({ openingBalance: -350 }), items, 'range');
+    expect(data.lineItems).toHaveLength(4);
+    expect(data.lineItems[0].isAdjustment).toBe(true);
+    expect(data.lineItems[0].amount).toBe(-350);
+    expect(data.lineItems[0].balance).toBe(-350);
+    expect(data.lineItems[1].balance).toBeCloseTo(-150, 5);
+    expect(data.lineItems[2].balance).toBeCloseTo(150, 5);
+    expect(data.lineItems[3].balance).toBeCloseTo(550, 5);
+    expect(data.subtotal).toBeCloseTo(900, 5);
+    expect(data.paymentsApplied).toBeCloseTo(350, 5);
+    expect(data.total).toBeCloseTo(550, 5);
+  });
+
+  it('keeps total due at 0 while work is still covered by retainer', () => {
+    const items = [
+      { project: 'A', date: '8/1/2026', description: 'Covered', hours: 1, rate: 100, amount: 100 },
+    ];
+    const data = buildInvoiceData(makeParams({ openingBalance: -250 }), items, 'range');
+    expect(data.lineItems[1].balance).toBeCloseTo(-150, 5);
+    expect(data.total).toBe(0);
+  });
+
+  it('adds prior outstanding to the running balance', () => {
+    const items = [
+      { project: 'A', date: '8/1/2026', description: 'New', hours: 1, rate: 200, amount: 200 },
+    ];
+    const data = buildInvoiceData(makeParams({ openingBalance: 75 }), items, 'range');
+    expect(data.lineItems[0].description).toBe('Prior outstanding balance');
+    expect(data.lineItems[1].balance).toBeCloseTo(275, 5);
+    expect(data.total).toBeCloseTo(275, 5);
+    expect(data.paymentsApplied).toBe(0);
+  });
+});
+
+// ── withRunningBalances ───────────────────────────────────────────────────────
+
+describe('withRunningBalances', () => {
+  const work = [
+    { project: 'A', date: '8/1/2026', description: 'One', hours: 1, rate: 50, amount: 50 },
+    { project: 'A', date: '8/2/2026', description: 'Two', hours: 2, rate: 50, amount: 100 },
+  ];
+
+  it('leaves items unchanged besides balance when opening is 0', () => {
+    const items = withRunningBalances(work, 0);
+    expect(items).toHaveLength(2);
+    expect(items[0].balance).toBe(50);
+    expect(items[1].balance).toBe(150);
+    expect(items.every((i) => !i.isAdjustment)).toBe(true);
+  });
+
+  it('inserts a retainer row that subsequent work eats through', () => {
+    const items = withRunningBalances(work, -80);
+    expect(items[0].description).toBe('Retainer / payments applied');
+    expect(items[0].balance).toBe(-80);
+    expect(items[1].balance).toBe(-30);
+    expect(items[2].balance).toBe(70);
   });
 });
 
