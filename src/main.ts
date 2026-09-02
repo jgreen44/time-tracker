@@ -33,8 +33,12 @@ const mb = menubar({
   icon: trayIcon,
   preloadWindow: true,
   browserWindow: {
-    width: 340,
+    width: 380,
     height: 860,
+    minWidth: 340,
+    minHeight: 480,
+    maxWidth: 640,
+    resizable: true,
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
